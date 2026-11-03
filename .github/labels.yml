@@ -1,0 +1,66 @@
+# Source of truth for the repository labels. Only apply labels listed here.
+# Keep every line in this exact shape (scripts/sync-labels.sh parses it).
+# Descriptions must stay under 100 characters.
+
+# Type: exactly one per pull request (matches the branch prefix)
+- name: type/feature
+  color: "F2784B"
+  description: New capability or behavior (branch prefix feat/)
+- name: type/bug
+  color: "D93F0B"
+  description: Something is broken (branch prefix fix/)
+- name: type/chore
+  color: "8B8FA8"
+  description: Docs, tests, refactor, CI, dependencies (branch prefix chore/)
+
+# Area: at least one per pull request
+- name: area/api
+  color: "4A2670"
+  description: PreviewEnvironment CRD types, schema and versioning
+- name: area/controller
+  color: "4A2670"
+  description: Reconciliation loop and controller logic
+- name: area/lifecycle
+  color: "4A2670"
+  description: TTL, expiry, finalizers and cleanup
+- name: area/cli
+  color: "4A2670"
+  description: The vesperctl command-line tool
+- name: area/networking
+  color: "4A2670"
+  description: HTTP access, Gateway API, Ingress, DNS and TLS
+- name: area/security
+  color: "4A2670"
+  description: RBAC, isolation, quotas and policies
+- name: area/observability
+  color: "4A2670"
+  description: Metrics, events, logs and tracing
+- name: area/integrations
+  color: "4A2670"
+  description: GitHub, Helm, Kustomize, Argo CD and Flux
+- name: area/testing
+  color: "4A2670"
+  description: Unit, envtest and end-to-end tests
+- name: area/ci-release
+  color: "4A2670"
+  description: CI pipelines, releases and packaging
+- name: area/docs
+  color: "4A2670"
+  description: Documentation and examples
+
+# Meta
+- name: breaking-change
+  color: "B60205"
+  description: Changes the public API or behavior in an incompatible way
+- name: good first issue
+  color: "7057FF"
+  description: Well scoped, suitable for a first contribution
+- name: help wanted
+  color: "008672"
+  description: Maintainers would welcome a contribution
+- name: needs-triage
+  color: "FFE29A"
+  description: Not yet reviewed by a maintainer
+- name: blocked
+  color: "B60205"
+  description: Waiting on another issue or an external decision
