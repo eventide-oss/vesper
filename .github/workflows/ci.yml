@@ -56,7 +56,7 @@ jobs:
           cache: false
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: v2.5.0
+          version: v2.15.0
 
   vulncheck:
     name: vulncheck
@@ -71,6 +71,5 @@ jobs:
           go-version-file: go.mod
           cache: false
       # Pinned version: the module checksum is verified by the Go checksum database.
-      # v1.1.4 is the last release that builds with Go older than 1.25 (its
-      # successors require Go 1.25 or 1.26). Bump it together with go.mod.
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+      # Bump it together with go.mod: recent releases require a recent Go.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
