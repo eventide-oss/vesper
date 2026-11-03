@@ -1,0 +1,7 @@
+version: "2"
+
+linters:
+  # Added on top of the default set (errcheck, govet, ineffassign,
+  # staticcheck, unused).
+  enable:
+    - gosec
