@@ -1,0 +1,30 @@
+name: DCO
+
+on:
+  pull_request:
+
+# Read-only by default. Raise it per job only if a job needs more.
+permissions:
+  contents: read
+
+concurrency:
+  group: dco-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dco:
+    name: dco
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The whole history is needed to list the commits of the pull request.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check Signed-off-by on every commit
+        # SHAs are passed through env, never interpolated into the script.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: scripts/check-dco.sh "$BASE_SHA" "$HEAD_SHA"
