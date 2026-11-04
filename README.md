@@ -17,11 +17,13 @@ make build
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md) and the skills in `.claude/skills/` before you
-start. In short: every change starts from an issue, uses a
-`<type>/<issue-number>-<description>` branch and Conventional Commits, and
-ends in a small pull request that follows
-[the template](.github/PULL_REQUEST_TEMPLATE.md).
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first; the
+project follows a [Code of Conduct](CODE_OF_CONDUCT.md) and a simple
+[governance](GOVERNANCE.md). In short: every change starts from an issue, uses a
+`<type>/<issue-number>-<description>` branch and Conventional Commits, and ends
+in a small pull request that follows
+[the template](.github/PULL_REQUEST_TEMPLATE.md). AI agents also read
+[AGENTS.md](AGENTS.md).
 
 ## License
 
