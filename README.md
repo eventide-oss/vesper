@@ -8,6 +8,13 @@ removes it automatically when its time to live (TTL) expires.
 
 > **Status:** pre-alpha. Nothing here is usable yet.
 
+## Build
+
+```sh
+make build
+./bin/vesperctl version
+```
+
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) and the skills in `.claude/skills/` before you

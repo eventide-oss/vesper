@@ -1,8 +1,8 @@
 // Command vesperctl is the command-line tool for Vesper.
 package main
 
-import "fmt"
+import "os"
 
 func main() {
-	fmt.Println("vesperctl: pre-alpha, no commands yet")
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
