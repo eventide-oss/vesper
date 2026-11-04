@@ -1,0 +1,48 @@
+# Dependabot opens pull requests to keep dependencies up to date.
+#
+# Review policy (also summarized in CONTRIBUTING.md):
+# - A Dependabot pull request is reviewed like any other: CI must be green.
+# - Read the release notes linked in the description before merging.
+# - GitHub Actions stay pinned to a full commit SHA. Dependabot updates the SHA
+#   and the version in the trailing comment (`# v7.0.1`) together.
+# - Dependabot commits are exempt from the DCO check (they are made by a bot).
+# - Security updates are opened as soon as an advisory exists, independently of
+#   the weekly schedule below.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    # One pull request for all minor and patch updates; majors stay separate
+    # because they may break the build and deserve their own review.
+    groups:
+      go-minor-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - type/chore
+      - area/ci-release
+    commit-message:
+      prefix: chore
+      include: scope # produces "chore(deps): ..."
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - "*"
+    labels:
+      - type/chore
+      - area/ci-release
+    commit-message:
+      prefix: chore
+      include: scope
