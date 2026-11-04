@@ -1,0 +1,11 @@
+# Blank issues are disabled: every issue uses a form, so that it has the four
+# parts the project requires (Context, Problem, Proposed solution, Acceptance
+# criteria).
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/eventide-oss/vesper/security/advisories/new
+    about: Report vulnerabilities privately. Never open a public issue for them.
+  - name: Ask a question
+    url: https://github.com/eventide-oss/vesper/discussions
+    about: Questions and ideas that are not yet a bug or a proposal belong in Discussions.

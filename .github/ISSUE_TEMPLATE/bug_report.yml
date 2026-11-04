@@ -1,0 +1,42 @@
+name: Bug report
+description: Something does not work as documented.
+title: "fix: "
+labels:
+  - type/bug
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not report security vulnerabilities here:
+        see the security policy. Write in English.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Where does this happen? Vesper version or commit, Kubernetes version, how you installed it.
+      placeholder: "vesperctl v0.1.0, Kubernetes 1.37 on kind"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happens, what you expected, and the steps to reproduce. Paste logs and manifests (remove secrets).
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Optional. If you know the cause or a fix, describe it.
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How will we know it is fixed? A checklist is ideal.
+      placeholder: "- [ ] ..."
+    validations:
+      required: false

@@ -1,0 +1,41 @@
+name: Feature request
+description: Propose a new capability or an improvement.
+title: "feat: "
+labels:
+  - type/feature
+  - needs-triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. A maintainer will triage it before anyone starts
+        working on it. Write in English.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Who is affected and in which situation? What exists today?
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What can users not do, or do badly, today?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you add or change? Mention alternatives you considered.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checklist of observable results that mean the work is done.
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
