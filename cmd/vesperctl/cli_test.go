@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -24,13 +25,49 @@ func TestRun(t *testing.T) {
 			name:       "no command",
 			args:       nil,
 			wantCode:   exitUsage,
-			wantStderr: "Usage: vesperctl",
+			wantStderr: "vesperctl: missing command",
+		},
+		{
+			name:       "no command prints the usage",
+			args:       []string{},
+			wantCode:   exitUsage,
+			wantStderr: "vesperctl [command]",
 		},
 		{
 			name:       "unknown command",
 			args:       []string{"bogus"},
 			wantCode:   exitUsage,
 			wantStderr: `unknown command "bogus"`,
+		},
+		{
+			name:       "unknown flag",
+			args:       []string{"--bogus"},
+			wantCode:   exitUsage,
+			wantStderr: "unknown flag: --bogus",
+		},
+		{
+			name:       "unknown flag on a subcommand",
+			args:       []string{"version", "--bogus"},
+			wantCode:   exitUsage,
+			wantStderr: "unknown flag: --bogus",
+		},
+		{
+			name:       "version rejects arguments",
+			args:       []string{"version", "extra"},
+			wantCode:   exitUsage,
+			wantStderr: `unknown command "extra" for "vesperctl version"`,
+		},
+		{
+			name:       "help flag",
+			args:       []string{"--help"},
+			wantCode:   exitOK,
+			wantStdout: "Available Commands:",
+		},
+		{
+			name:       "help command for a subcommand",
+			args:       []string{"help", "version"},
+			wantCode:   exitOK,
+			wantStdout: "Print the version of vesperctl",
 		},
 	}
 
@@ -60,6 +97,24 @@ func TestRunVersionUsesBuildVersion(t *testing.T) {
 	}
 	if want := "vesperctl version v1.2.3 ("; !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)
+	}
+}
+
+// failingWriter is an io.Writer whose writes always fail, like a closed pipe.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write failed") }
+
+func TestRunStdoutWriteErrorIsAFailure(t *testing.T) {
+	var stderr bytes.Buffer
+
+	got := run([]string{"version"}, failingWriter{}, &stderr)
+
+	if got != exitFailure {
+		t.Errorf("exit code = %d, want %d", got, exitFailure)
+	}
+	if want := "write failed"; !strings.Contains(stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", stderr.String(), want)
 	}
 }
 
