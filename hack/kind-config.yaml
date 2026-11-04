@@ -1,0 +1,13 @@
+# kind cluster used for local development, integration and e2e tests.
+# Create it with `make kind-up`, remove it with `make kind-down`.
+#
+# The node image fixes the Kubernetes version. It is pinned by tag AND digest:
+# a tag can be moved, a digest always designates the same content.
+# This is the default image of kind v0.33.0. To upgrade, take the image listed
+# in the release notes of the new kind version and update both this file and
+# docs/development.md.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
