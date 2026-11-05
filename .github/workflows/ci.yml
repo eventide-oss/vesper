@@ -73,3 +73,22 @@ jobs:
       # Pinned version: the module checksum is verified by the Go checksum database.
       # Bump it together with go.mod: recent releases require a recent Go.
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+  integration:
+    name: integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Pinned version, verified by the Go checksum database. Keep it in line
+      # with docs/development.md and the node image in hack/kind-config.yaml.
+      - run: go install sigs.k8s.io/kind@v0.33.0
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      # The runner has Docker. The cluster is discarded with the runner.
+      - run: make test-integration
