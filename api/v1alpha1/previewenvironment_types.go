@@ -101,6 +101,15 @@ const (
 // application is running and reachable.
 const ConditionReady = "Ready"
 
+// Reasons of the Ready condition.
+const (
+	// ReasonProvisioning means the operator is setting up the preview.
+	ReasonProvisioning = "Provisioning"
+	// ReasonNamespaceConflict means the namespace the preview needs exists and
+	// was not created by Vesper for this preview. Vesper leaves it untouched.
+	ReasonNamespaceConflict = "NamespaceConflict"
+)
+
 // PreviewEnvironmentStatus is the state of a preview as observed by the
 // operator. Only the operator writes it, through the status subresource.
 type PreviewEnvironmentStatus struct {

@@ -5,23 +5,22 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
-  - vesper.eventide.dev
+  - ""
   resources:
-  - previewenvironments
+  - namespaces
   verbs:
   - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
 - apiGroups:
   - vesper.eventide.dev
   resources:
-  - previewenvironments/finalizers
+  - previewenvironments
   verbs:
-  - update
+  - get
+  - list
+  - watch
 - apiGroups:
   - vesper.eventide.dev
   resources:
@@ -29,4 +28,3 @@ rules:
   verbs:
   - get
   - patch
-  - update
