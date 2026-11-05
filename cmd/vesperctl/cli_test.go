@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestRun(t *testing.T) {
@@ -152,5 +154,31 @@ func checkOutput(t *testing.T, stream, got, want string) {
 	}
 	if !strings.Contains(got, want) {
 		t.Errorf("%s = %q, want it to contain %q", stream, got, want)
+	}
+}
+
+func TestExecuteTurnsPanicIntoInternalError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	opts := newGlobalOptions(emptyEnv)
+	root := newRootCmd(&stdout, &stderr, opts, &fakeFactory{opts: opts, client: newFakeClient()})
+	root.AddCommand(&cobra.Command{
+		Use: "boom",
+		RunE: func(*cobra.Command, []string) error {
+			panic("unexpected nil client")
+		},
+	})
+
+	code := execute(root, []string{"boom"}, &stderr)
+
+	if code != exitFailure {
+		t.Errorf("exit code = %d, want %d", code, exitFailure)
+	}
+	want := "vesperctl: internal error: unexpected nil client " +
+		"(this is a bug, please report it at " + issuesURL + ")\n"
+	if stderr.String() != want {
+		t.Errorf("stderr =\n%q\nwant\n%q", stderr.String(), want)
+	}
+	if strings.Contains(stderr.String(), "goroutine ") {
+		t.Errorf("stderr contains a stack trace: %q", stderr.String())
 	}
 }
