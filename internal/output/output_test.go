@@ -2,10 +2,11 @@ package output
 
 import (
 	"bytes"
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/spf13/pflag"
+	"github.com/spf13/cobra"
 )
 
 func TestAddFlag(t *testing.T) {
@@ -33,11 +34,11 @@ func TestAddFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+			cmd := &cobra.Command{Use: "test"}
 			var f Format
-			AddFlag(fs, &f)
+			AddFlag(cmd, &f)
 
-			err := fs.Parse(tt.args)
+			err := cmd.Flags().Parse(tt.args)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Parse error = %v, want it to contain %q", err, tt.wantErr)
@@ -108,5 +109,23 @@ func TestWrite(t *testing.T) {
 func TestWriteRejectsTable(t *testing.T) {
 	if err := Write(&bytes.Buffer{}, Table, struct{}{}); err == nil {
 		t.Error("Write(Table) returned no error")
+	}
+}
+
+func TestAddFlagCompletesFormats(t *testing.T) {
+	cmd := &cobra.Command{Use: "test"}
+	var f Format
+	AddFlag(cmd, &f)
+
+	complete, ok := cmd.GetFlagCompletionFunc("output")
+	if !ok {
+		t.Fatal("no completion function registered for --output")
+	}
+	got, directive := complete(cmd, nil, "")
+	if want := []cobra.Completion{"table", "json", "yaml"}; !slices.Equal(got, want) {
+		t.Errorf("completions = %q, want %q", got, want)
+	}
+	if directive != cobra.ShellCompDirectiveNoFileComp {
+		t.Errorf("directive = %v, want ShellCompDirectiveNoFileComp", directive)
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/spf13/pflag"
+	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 )
 
@@ -54,11 +54,22 @@ func validFormats() string {
 	return strings.Join(names, ", ")
 }
 
-// AddFlag registers -o/--output on fs, stores the chosen format in f and
-// sets it to Table until a value is given.
-func AddFlag(fs *pflag.FlagSet, f *Format) {
+// AddFlag registers -o/--output on cmd, stores the chosen format in f and
+// sets it to Table until a value is given. Shell completion proposes the
+// supported formats.
+func AddFlag(cmd *cobra.Command, f *Format) {
 	*f = Table
-	fs.VarP(f, "output", "o", "output format: "+validFormats())
+	cmd.Flags().VarP(f, "output", "o", "output format: "+validFormats())
+	// It only fails if the flag does not exist or already has a completion
+	// function, which cannot happen right after adding it.
+	_ = cmd.RegisterFlagCompletionFunc("output",
+		func(*cobra.Command, []string, string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			names := make([]cobra.Completion, len(formats))
+			for i, f := range formats {
+				names[i] = string(f)
+			}
+			return names, cobra.ShellCompDirectiveNoFileComp
+		})
 }
 
 // Write writes v to w in format, which must be JSON or YAML: the table layout

@@ -61,12 +61,12 @@ func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFac
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return &usageError{err}
 	})
-	// Shell completion is added later; do not expose Cobra's default command.
+	// newCompletionCmd replaces Cobra's default completion command.
 	root.CompletionOptions.DisableDefaultCmd = true
 	// Persistent flags are inherited by every subcommand, as in kubectl.
 	opts.addFlags(root.PersistentFlags())
 
-	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory))
+	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory), newCompletionCmd())
 	return root
 }
 

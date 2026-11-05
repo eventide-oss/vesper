@@ -30,7 +30,7 @@ func newGetCmd(factory clientFactory) *cobra.Command {
 			return runGet(cmd, factory, args[0], format)
 		},
 	}
-	output.AddFlag(cmd.Flags(), &format)
+	output.AddFlag(cmd, &format)
 	return cmd
 }
 

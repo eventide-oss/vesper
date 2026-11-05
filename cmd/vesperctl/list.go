@@ -42,7 +42,7 @@ func newListCmd(factory clientFactory) *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&allNamespaces, "all-namespaces", "A", false,
 		"list preview environments in every namespace (overrides --namespace)")
-	output.AddFlag(cmd.Flags(), &format)
+	output.AddFlag(cmd, &format)
 	return cmd
 }
 
