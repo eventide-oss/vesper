@@ -1,11 +1,12 @@
 //go:build integration
 
 // Package integration runs the vesperctl binary against a real API server: a
-// kind cluster with the stub PreviewEnvironment CRD of testdata/.
+// kind cluster with the PreviewEnvironment CRD generated in config/crd.
 //
-// Run it with `make test-integration`. It creates the CRD (unless one is
-// already installed), a namespace with a random name and two previews, and
-// deletes what it created, even when a test fails.
+// Run it with `make test-integration`. It installs the CRD unless one is
+// already installed, creates a namespace with a random name and two previews,
+// and deletes what it created, even when a test fails. A CRD it did not
+// install is never modified or deleted.
 package integration
 
 import (
@@ -44,6 +45,9 @@ const (
 	managedBy      = "vesper-integration-tests"
 
 	crdName = "previewenvironments.vesper.eventide.dev"
+
+	// crdFile is the generated CRD (make manifests), relative to this package.
+	crdFile = "../../config/crd/bases/vesper.eventide.dev_previewenvironments.yaml"
 
 	// waitTimeout bounds every wait on the cluster.
 	waitTimeout = time.Minute
@@ -136,8 +140,9 @@ func TestCLI(t *testing.T) {
 			}},
 		},
 	})
+	// Every spec field is set, so the API server adds no default.
 	createPreview(t, client, ns, "pr-12", map[string]any{
-		"spec": map[string]any{"image": "nginx:1.27"},
+		"spec": map[string]any{"image": "nginx:1.27", "port": 80, "replicas": 2, "ttl": "2h"},
 	})
 
 	t.Run("list table", func(t *testing.T) {
@@ -247,7 +252,7 @@ func readySummary(ns string) map[string]any {
 func pendingSummary(ns string) map[string]any {
 	return map[string]any{
 		"name": "pr-12", "namespace": ns,
-		"spec": map[string]any{"image": "nginx:1.27", "envCount": 0.0},
+		"spec": map[string]any{"image": "nginx:1.27", "port": 80.0, "replicas": 2.0, "ttl": "2h", "envCount": 0.0},
 	}
 }
 
@@ -363,8 +368,9 @@ func cleanupContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), waitTimeout)
 }
 
-// prepareCRD removes a stub CRD left by an interrupted run, and reports
-// whether a CRD the tests did not create is installed.
+// prepareCRD removes a CRD left by an interrupted run, and reports whether a
+// CRD the tests did not install is installed. The tests recognize their own
+// CRD by the managed-by label they add when they install it.
 func prepareCRD(t *testing.T, client dynamic.Interface) bool {
 	t.Helper()
 	crd, err := client.Resource(crdGVR).Get(t.Context(), crdName, metav1.GetOptions{})
@@ -376,25 +382,33 @@ func prepareCRD(t *testing.T, client dynamic.Interface) bool {
 	case crd.GetLabels()[managedByLabel] != managedBy:
 		return true
 	}
-	t.Log("removing the stub CRD left by a previous run")
+	t.Log("removing the CRD left by a previous run")
 	deleteCRD(t, client, t.Context())
 	return false
 }
 
-// installCRD creates the stub CRD, waits until the API server serves it, and
-// registers its deletion.
+// installCRD creates the generated CRD with the managed-by label, waits until
+// the API server serves it, and registers its deletion.
 func installCRD(t *testing.T, client dynamic.Interface) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("testdata", "previewenvironment-crd.yaml"))
+	raw, err := os.ReadFile(filepath.FromSlash(crdFile))
 	if err != nil {
-		t.Fatalf("read stub CRD: %v", err)
+		t.Fatalf("read CRD: %v", err)
 	}
 	crd := &unstructured.Unstructured{}
 	if err := yaml.Unmarshal(raw, &crd.Object); err != nil {
-		t.Fatalf("parse stub CRD: %v", err)
+		t.Fatalf("parse CRD: %v", err)
 	}
+	// Added here, not in the file: a CRD installed with `make install` never
+	// carries it, so the tests never delete it.
+	labels := crd.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[managedByLabel] = managedBy
+	crd.SetLabels(labels)
 	if _, err := client.Resource(crdGVR).Create(t.Context(), crd, metav1.CreateOptions{}); err != nil {
-		t.Fatalf("create stub CRD: %v", err)
+		t.Fatalf("create CRD: %v", err)
 	}
 	t.Cleanup(func() {
 		ctx, cancel := cleanupContext()
@@ -403,7 +417,7 @@ func installCRD(t *testing.T, client dynamic.Interface) {
 	})
 
 	// Registration is asynchronous: wait for the Established condition.
-	waitFor(t, t.Context(), "the stub CRD to be established", func(ctx context.Context) (bool, error) {
+	waitFor(t, t.Context(), "the CRD to be established", func(ctx context.Context) (bool, error) {
 		crd, err := client.Resource(crdGVR).Get(ctx, crdName, metav1.GetOptions{})
 		if err != nil {
 			return false, err
@@ -418,16 +432,17 @@ func installCRD(t *testing.T, client dynamic.Interface) {
 	})
 }
 
-// deleteCRD deletes the stub CRD, with every PreviewEnvironment, and waits
-// until it is gone so that the next run starts clean.
+// deleteCRD deletes the CRD the tests installed, with every
+// PreviewEnvironment, and waits until it is gone so that the next run starts
+// clean.
 func deleteCRD(t *testing.T, client dynamic.Interface, ctx context.Context) {
 	t.Helper()
 	err := client.Resource(crdGVR).Delete(ctx, crdName, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		t.Errorf("delete stub CRD: %v", err)
+		t.Errorf("delete CRD: %v", err)
 		return
 	}
-	waitFor(t, ctx, "the stub CRD to be deleted", func(ctx context.Context) (bool, error) {
+	waitFor(t, ctx, "the CRD to be deleted", func(ctx context.Context) (bool, error) {
 		_, err := client.Resource(crdGVR).Get(ctx, crdName, metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			return true, nil
@@ -462,14 +477,31 @@ func createNamespace(t *testing.T, client dynamic.Interface) string {
 	return name
 }
 
+// createPreview creates a preview, then writes its status, if fields has one,
+// as the operator would. The status subresource ignores a status sent with
+// the object, so it takes a second request.
 func createPreview(t *testing.T, client dynamic.Interface, ns, name string, fields map[string]any) {
 	t.Helper()
+	fields = maps.Clone(fields)
+	status, hasStatus := fields["status"]
+	delete(fields, "status")
+
 	obj := &unstructured.Unstructured{Object: fields}
 	obj.SetAPIVersion("vesper.eventide.dev/v1alpha1")
 	obj.SetKind("PreviewEnvironment")
 	obj.SetName(name)
-	if _, err := client.Resource(previewGVR).Namespace(ns).Create(t.Context(), obj, metav1.CreateOptions{}); err != nil {
+	previews := client.Resource(previewGVR).Namespace(ns)
+	created, err := previews.Create(t.Context(), obj, metav1.CreateOptions{})
+	if err != nil {
 		t.Fatalf("create preview %s/%s: %v", ns, name, err)
+	}
+	if !hasStatus {
+		return
+	}
+	// The created object carries the resourceVersion the update must send.
+	created.Object["status"] = status
+	if _, err := previews.UpdateStatus(t.Context(), created, metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("update status of preview %s/%s: %v", ns, name, err)
 	}
 }
 

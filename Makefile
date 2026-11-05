@@ -36,7 +36,7 @@ generate: controller-gen ## Generate the DeepCopy methods of the API types.
 test: ## Run the unit tests.
 	go test -race ./...
 
-# Runs vesperctl against the kind cluster (created if missing) with a stub CRD.
+# Runs vesperctl against the kind cluster (created if missing) with the generated CRD.
 # -count=1 disables the test cache: the result depends on the cluster.
 .PHONY: test-integration
 test-integration: kind-up ## Run the CLI integration tests against kind.
