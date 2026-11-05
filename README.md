@@ -6,8 +6,9 @@ Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 `PreviewEnvironment`; Vesper creates an isolated environment for it, and
 removes it automatically when its time to live (TTL) expires.
 
-> **Status:** pre-alpha. Only the read-only CLI works today; the operator that
-> creates environments does not exist yet. See [Status](#status).
+> **Status:** pre-alpha. The `PreviewEnvironment` API and the read-only CLI
+> work today; the operator that creates environments does not exist yet. See
+> [Status](#status).
 
 ## Why
 
@@ -68,17 +69,21 @@ extend and delete them.
 
 Works today:
 
+- The `PreviewEnvironment` API: a CRD generated from Go types, with validation
+  and defaults applied by the API server (the image must be pinned with a tag
+  other than `latest` or with a digest) and a status that only the operator can
+  write. `kubectl get pe` shows the phase, the URL and the expiry.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
   the [vesperctl reference](docs/cli.md).
 - Shell completion for bash, zsh and fish.
-- Integration tests against a kind cluster with a stub CRD.
+- Integration tests of the CLI against a kind cluster.
 
 Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| The real `PreviewEnvironment` API and the operator: namespace, Deployment, Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
+| The operator: namespace, Deployment, Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
 | Ingress address, TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
@@ -92,14 +97,18 @@ You need Go, Docker and [kind](https://kind.sigs.k8s.io/); see
 make build
 ./bin/vesperctl version
 
-# A local cluster with the stub CRD used by the integration tests:
+# A local cluster with the PreviewEnvironment CRD and a sample preview:
 make kind-up
-kubectl --context kind-vesper-dev apply -f test/integration/testdata/previewenvironment-crd.yaml
-./bin/vesperctl --context kind-vesper-dev list -A
+kubectl config use-context kind-vesper-dev
+make install
+kubectl apply -f config/samples/vesper_v1alpha1_previewenvironment.yaml
+./bin/vesperctl list -A
+kubectl get pe -A
 ```
 
-The list is empty until you create a `PreviewEnvironment` yourself: nothing
-creates them yet, and nothing runs for them until the operator exists.
+The API server validates the preview and fills its defaults. Nothing runs for
+it yet: its phase stays empty until the operator exists. `make uninstall`
+removes the CRD and every `PreviewEnvironment` with it.
 
 ## Contributing
 

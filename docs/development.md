@@ -95,8 +95,8 @@ kubectl --context kind-vesper-dev create --dry-run=server -f config/samples/vesp
 ```
 
 `--dry-run=server` runs the API server's validation and defaulting without
-storing the object. `make install` replaces the stub CRD of the integration
-tests; `make uninstall` removes the CRD and every `PreviewEnvironment` with it.
+storing the object. `make uninstall` removes the CRD and every
+`PreviewEnvironment` with it.
 
 ## Tests
 
@@ -109,19 +109,23 @@ make test-integration   # vesperctl against the kind cluster (created if missing
 
 The integration tests in `test/integration` sit behind the `integration` build
 tag, so `go test ./...` skips them. They build the `vesperctl` binary and run
-`list` and `get` against a real API server, with the stub CRD in
-`test/integration/testdata`: same group, version and names as the real
-`PreviewEnvironment` API, without validation. The stub will be replaced by the
-generated CRD once the operator defines the API.
+`list` and `get` against a real API server, with the generated CRD of
+`config/crd/bases`. They create previews, then write their status through the
+status subresource, as the operator would.
 
-Each run creates the stub CRD, a namespace named `vesper-it-<random>` and a few
-previews, and deletes them at the end, even when a test fails. Everything it
-creates carries the label `app.kubernetes.io/managed-by=vesper-integration-tests`.
+Each run creates a namespace named `vesper-it-<random>` and a few previews,
+and deletes them at the end, even when a test fails. Everything it creates
+carries the label `app.kubernetes.io/managed-by=vesper-integration-tests`.
 
-- If a `PreviewEnvironment` CRD that the tests did not create is installed
-  (for example by the operator), it is left in place and the "not installed"
-  cases are skipped.
-- A stub CRD left by an interrupted run is removed before the tests start.
+- If no `PreviewEnvironment` CRD is installed, the tests install it, with that
+  label, and delete it at the end. Deleting a CRD deletes every
+  `PreviewEnvironment`, so the tests only delete a CRD that carries their
+  label.
+- If a CRD without the label is installed (for example with `make install`),
+  it is left in place, with its previews, and the "not installed" cases are
+  skipped.
+- A labeled CRD left by an interrupted run is removed before the tests start.
+  Never add that label to a CRD yourself.
 - The tests only run against a context named `kind-...`; they refuse any
   other cluster. `VESPER_IT_CONTEXT` selects the context, and
   `make test-integration KIND_CLUSTER=other` sets it for you.
