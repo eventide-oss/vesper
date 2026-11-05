@@ -66,7 +66,7 @@ func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFac
 	// Persistent flags are inherited by every subcommand, as in kubectl.
 	opts.addFlags(root.PersistentFlags())
 
-	root.AddCommand(newVersionCmd(), newListCmd(factory))
+	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory))
 	return root
 }
 
