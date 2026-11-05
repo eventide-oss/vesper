@@ -11,25 +11,27 @@ import (
 	"github.com/spf13/cobra"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/util/validation"
+
+	"github.com/eventide-oss/vesper/internal/output"
 )
 
-// none is printed for a missing value, as kubectl does.
-const none = "<none>"
-
 func newGetCmd(factory clientFactory) *cobra.Command {
-	return &cobra.Command{
+	var format output.Format
+
+	cmd := &cobra.Command{
 		Use:   "get <name>",
 		Short: "Show the details of a preview environment",
 		Long: "Show the spec summary, status, conditions and expiry of one preview\n" +
 			"environment in the current namespace.",
 		Args: nameArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, factory, args[0])
+			return runGet(cmd, factory, args[0], format)
 		},
 	}
+	output.AddFlag(cmd.Flags(), &format)
+	return cmd
 }
 
 // nameArg requires exactly one argument that is a valid object name, and
@@ -45,7 +47,7 @@ func nameArg(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runGet(cmd *cobra.Command, factory clientFactory, name string) error {
+func runGet(cmd *cobra.Command, factory clientFactory, name string, format output.Format) error {
 	client, err := factory.DynamicClient()
 	if err != nil {
 		return err
@@ -60,7 +62,12 @@ func runGet(cmd *cobra.Command, factory clientFactory, name string) error {
 	if err != nil {
 		return getError(err, namespace, name)
 	}
-	return printPreviewDetails(cmd.OutOrStdout(), *item, time.Now())
+	summary := newPreviewSummary(*item)
+
+	if format != output.Table {
+		return output.Write(cmd.OutOrStdout(), format, summary)
+	}
+	return printPreviewDetails(cmd.OutOrStdout(), summary, time.Now())
 }
 
 // getError explains the errors a user can act on. Both a missing object and
@@ -77,11 +84,9 @@ func getError(err error, namespace, name string) error {
 	return fmt.Errorf("get preview environment %q: %w", name, err)
 }
 
-// printPreviewDetails writes a kubectl describe-like view of item. now is the
+// printPreviewDetails writes a kubectl describe-like view of s. now is the
 // reference time for relative durations.
-//
-// spec.env may hold secrets, so only the number of variables is printed.
-func printPreviewDetails(w io.Writer, item unstructured.Unstructured, now time.Time) error {
+func printPreviewDetails(w io.Writer, s previewSummary, now time.Time) error {
 	// The labels are fixed, so a fixed width aligns the values. The first
 	// write error is kept and returned.
 	var err error
@@ -92,89 +97,65 @@ func printPreviewDetails(w io.Writer, item unstructured.Unstructured, now time.T
 	}
 	field := func(label, value string) { line("%-13s%s\n", label+":", value) }
 
-	field("Name", item.GetName())
-	field("Namespace", item.GetNamespace())
-	field("Created", createdAt(item, now))
-	field("Phase", phase(item))
-	field("URL", stringField(item, "status", "url"))
-	field("Expires", expiresAt(item, now))
+	field("Name", s.Name)
+	field("Namespace", s.Namespace)
+	field("Created", createdAt(s.CreatedAt, now))
+	field("Phase", orNone(s.Phase))
+	field("URL", orNone(s.URL))
+	field("Expires", expiresAt(s.ExpiresAt, now))
 	line("Spec:\n")
-	field("  Image", stringField(item, "spec", "image"))
-	field("  Port", scalarField(item, "spec", "port"))
-	field("  Replicas", scalarField(item, "spec", "replicas"))
-	field("  TTL", stringField(item, "spec", "ttl"))
-	field("  Env", envSummary(item))
+	field("  Image", orNone(s.Spec.Image))
+	field("  Port", intOrNone(s.Spec.Port))
+	field("  Replicas", intOrNone(s.Spec.Replicas))
+	field("  TTL", orNone(s.Spec.TTL))
+	field("  Env", envSummary(s.Spec.EnvCount))
 	if err != nil {
 		return err
 	}
-	return printConditions(w, item, now)
+	return printConditions(w, s.Conditions, now)
 }
 
-func stringField(item unstructured.Unstructured, fields ...string) string {
-	v, found, err := unstructured.NestedString(item.Object, fields...)
-	if err != nil || !found || v == "" {
+func intOrNone(n *int64) string {
+	if n == nil {
 		return none
 	}
-	return v
+	return fmt.Sprint(*n)
 }
 
-// scalarField formats a number or a boolean. Numbers decoded from JSON may be
-// int64 or float64, so the value is not converted to a fixed type.
-func scalarField(item unstructured.Unstructured, fields ...string) string {
-	v, found, err := unstructured.NestedFieldNoCopy(item.Object, fields...)
-	if err != nil || !found {
+func envSummary(count int) string {
+	switch count {
+	case 0:
 		return none
-	}
-	switch v.(type) {
-	case int64, float64, bool:
-		return fmt.Sprint(v)
-	}
-	return none
-}
-
-func envSummary(item unstructured.Unstructured) string {
-	env, found, err := unstructured.NestedSlice(item.Object, "spec", "env")
-	if err != nil || !found || len(env) == 0 {
-		return none
-	}
-	if len(env) == 1 {
+	case 1:
 		return "1 variable"
 	}
-	return fmt.Sprintf("%d variables", len(env))
+	return fmt.Sprintf("%d variables", count)
 }
 
-func createdAt(item unstructured.Unstructured, now time.Time) string {
-	created := item.GetCreationTimestamp()
-	if created.IsZero() {
+func createdAt(t *time.Time, now time.Time) string {
+	if t == nil {
 		return "<unknown>"
 	}
-	return fmt.Sprintf("%s (%s ago)", created.UTC().Format(time.RFC3339),
-		duration.HumanDuration(now.Sub(created.Time)))
+	return fmt.Sprintf("%s (%s ago)", t.Format(time.RFC3339), duration.HumanDuration(now.Sub(*t)))
 }
 
-// expiresAt formats status.expiresAt with the time left, or the time since
-// expiry while the controller has not deleted the preview yet.
-func expiresAt(item unstructured.Unstructured, now time.Time) string {
-	raw := stringField(item, "status", "expiresAt")
-	if raw == none {
+// expiresAt formats the expiry with the time left, or the time since expiry
+// while the controller has not deleted the preview yet.
+func expiresAt(t *time.Time, now time.Time) string {
+	if t == nil {
 		return none
 	}
-	t, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return raw
-	}
-	stamp := t.UTC().Format(time.RFC3339)
+	stamp := t.Format(time.RFC3339)
 	if left := t.Sub(now); left > 0 {
 		return fmt.Sprintf("%s (in %s)", stamp, duration.HumanDuration(left))
 	}
-	return fmt.Sprintf("%s (expired %s ago)", stamp, duration.HumanDuration(now.Sub(t)))
+	return fmt.Sprintf("%s (expired %s ago)", stamp, duration.HumanDuration(now.Sub(*t)))
 }
 
-// printConditions writes status.conditions as a table, in the order the
+// printConditions writes the conditions as a table, in the order the
 // controller set them.
-func printConditions(w io.Writer, item unstructured.Unstructured, now time.Time) error {
-	conditions, found, err := unstructured.NestedSlice(item.Object, "status", "conditions")
-	if err != nil || !found || len(conditions) == 0 {
+func printConditions(w io.Writer, conditions []conditionSummary, now time.Time) error {
+	if len(conditions) == 0 {
 		_, err := fmt.Fprintf(w, "Conditions:  %s\n", none)
 		return err
 	}
@@ -183,23 +164,9 @@ func printConditions(w io.Writer, item unstructured.Unstructured, now time.Time)
 	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "  TYPE\tSTATUS\tREASON\tAGE\tMESSAGE")
 	for _, c := range conditions {
-		m, ok := c.(map[string]any)
-		if !ok {
-			continue
-		}
-		cond := unstructured.Unstructured{Object: m}
 		_, _ = fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n",
-			stringField(cond, "type"), stringField(cond, "status"),
-			stringField(cond, "reason"), conditionAge(cond, now),
-			stringField(cond, "message"))
+			orNone(c.Type), orNone(c.Status), orNone(c.Reason),
+			age(c.LastTransitionTime, now), orNone(c.Message))
 	}
 	return tw.Flush()
-}
-
-func conditionAge(cond unstructured.Unstructured, now time.Time) string {
-	t, err := time.Parse(time.RFC3339, stringField(cond, "lastTransitionTime"))
-	if err != nil {
-		return "<unknown>"
-	}
-	return duration.HumanDuration(now.Sub(t))
 }

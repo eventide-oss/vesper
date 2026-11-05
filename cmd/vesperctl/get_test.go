@@ -121,7 +121,7 @@ func TestPrintPreviewDetails(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if err := printPreviewDetails(&out, *tt.item, now); err != nil {
+			if err := printPreviewDetails(&out, newPreviewSummary(*tt.item), now); err != nil {
 				t.Fatalf("printPreviewDetails: %v", err)
 			}
 			got := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
@@ -143,7 +143,7 @@ func TestPrintPreviewDetails(t *testing.T) {
 
 func TestPrintPreviewDetailsHidesEnvValues(t *testing.T) {
 	var out bytes.Buffer
-	if err := printPreviewDetails(&out, *readyPreview(time.Now()), time.Now()); err != nil {
+	if err := printPreviewDetails(&out, newPreviewSummary(*readyPreview(time.Now())), time.Now()); err != nil {
 		t.Fatalf("printPreviewDetails: %v", err)
 	}
 	for _, secret := range []string{"s3cr3t-value", "API_TOKEN"} {
