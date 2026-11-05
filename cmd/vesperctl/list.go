@@ -62,7 +62,7 @@ func runList(cmd *cobra.Command, factory clientFactory, allNamespaces bool, form
 	items, err := client.Resource(previewEnvironmentGVR).Namespace(namespace).
 		List(cmd.Context(), metav1.ListOptions{})
 	if err != nil {
-		return listError(err)
+		return listError(err, namespace)
 	}
 	list := newPreviewList(items.Items)
 
@@ -79,13 +79,15 @@ func runList(cmd *cobra.Command, factory clientFactory, allNamespaces bool, form
 }
 
 // listError explains the errors a user can act on.
-func listError(err error) error {
+func listError(err error, namespace string) error {
 	if apierrors.IsNotFound(err) {
 		// Listing a missing resource type returns 404: the CRD is not installed.
-		return fmt.Errorf("the PreviewEnvironment API (%s) is not installed in this cluster: "+
-			"install Vesper, or check --context", previewEnvironmentGVR.GroupResource())
+		return errCRDNotInstalled
 	}
-	return fmt.Errorf("list preview environments: %w", err)
+	if namespace == metav1.NamespaceAll {
+		return apiError(err, "list preview environments in all namespaces")
+	}
+	return apiError(err, fmt.Sprintf("list preview environments in namespace %q", namespace))
 }
 
 func noPreviewsMessage(namespace string) string {
