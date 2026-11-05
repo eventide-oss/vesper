@@ -9,6 +9,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8stesting "k8s.io/client-go/testing"
 )
 
@@ -132,5 +133,59 @@ func TestServerAddress(t *testing.T) {
 		if got := serverAddress(raw); got != want {
 			t.Errorf("serverAddress(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// TestExitCodeContract pins the exit codes documented in docs/cli.md:
+// 0 on success, 2 when the command line is wrong, 1 when a valid command
+// fails. No error ever prints a Go stack trace.
+func TestExitCodeContract(t *testing.T) {
+	forbidden := func() *dynamicfake.FakeDynamicClient {
+		client := newFakeClient()
+		client.PrependReactor("*", "previewenvironments", func(k8stesting.Action) (bool, runtime.Object, error) {
+			return true, nil, apierrors.NewForbidden(previewEnvironmentGVR.GroupResource(), "", errors.New("denied"))
+		})
+		return client
+	}
+
+	tests := []struct {
+		name     string
+		args     []string
+		client   *dynamicfake.FakeDynamicClient
+		wantCode int
+	}{
+		{name: "success: version", args: []string{"version"}, wantCode: exitOK},
+		{name: "success: list", args: []string{"list", "-o", "json"}, wantCode: exitOK},
+		{name: "success: completion", args: []string{"completion", "zsh"}, wantCode: exitOK},
+		{name: "usage: unknown command", args: []string{"lst"}, wantCode: exitUsage},
+		{name: "usage: unknown flag", args: []string{"list", "--bogus"}, wantCode: exitUsage},
+		{name: "usage: unknown format", args: []string{"get", "pr-1", "-o", "xml"}, wantCode: exitUsage},
+		{name: "usage: missing name", args: []string{"get"}, wantCode: exitUsage},
+		{name: "usage: invalid name", args: []string{"get", "PR_1"}, wantCode: exitUsage},
+		{name: "usage: unsupported shell", args: []string{"completion", "tcsh"}, wantCode: exitUsage},
+		{name: "runtime: not found", args: []string{"get", "pr-1"}, wantCode: exitFailure},
+		{name: "runtime: forbidden", args: []string{"list"}, client: forbidden(), wantCode: exitFailure},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := tt.client
+			if client == nil {
+				client = newFakeClient()
+			}
+			code, _, stderr := executeWith(t, tt.args, func(opts *globalOptions) clientFactory {
+				return &fakeFactory{opts: opts, client: client}
+			})
+
+			if code != tt.wantCode {
+				t.Errorf("exit code = %d, want %d (stderr: %q)", code, tt.wantCode, stderr)
+			}
+			if tt.wantCode != exitOK && !strings.HasPrefix(stderr, "vesperctl: ") {
+				t.Errorf("stderr = %q, want it to start with %q", stderr, "vesperctl: ")
+			}
+			if strings.Contains(stderr, "goroutine ") {
+				t.Errorf("stderr contains a stack trace: %q", stderr)
+			}
+		})
 	}
 }
