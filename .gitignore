@@ -35,3 +35,6 @@ go.work.sum
 # Build output (/vesperctl is what a plain `go build ./...` writes)
 /bin/
 /vesperctl
+
+# Install bundle written by `make build-installer`
+/dist/
