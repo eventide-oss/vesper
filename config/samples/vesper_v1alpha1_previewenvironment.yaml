@@ -6,4 +6,12 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: previewenvironment-sample
 spec:
-  # TODO(user): Add fields here
+  # Pinned with a tag (not latest) or a digest. Required.
+  image: nginxinc/nginx-unprivileged:1.27
+  # Optional fields, shown with their defaults.
+  port: 8080
+  replicas: 1
+  ttl: 24h
+  env:
+    - name: LOG_LEVEL
+      value: info

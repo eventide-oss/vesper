@@ -21,19 +21,64 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// PreviewEnvironmentSpec defines the desired state of PreviewEnvironment
+// PreviewEnvironmentSpec is the preview a user asks for: which image to run,
+// how, and for how long.
 type PreviewEnvironmentSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
+	// image is the container image to run, pinned with a tag other than
+	// "latest" or with a digest, for example ghcr.io/acme/app:pr-42 or
+	// ghcr.io/acme/app@sha256:<64 hex characters>. A preview must show exactly
+	// the code it was created for, and a moving tag would not.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:XValidation:rule="self.matches('^([a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]+)?/)?[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$')",message="image must be a valid image reference in lowercase, such as ghcr.io/acme/app:pr-42"
+	// +kubebuilder:validation:XValidation:rule="self.matches('@sha256:[a-f0-9]{64}$') || (self.matches(':[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') && !self.endsWith(':latest'))",message="image must be pinned with a tag other than latest, or with a digest"
+	Image string `json:"image"`
 
-	// foo is an example field of PreviewEnvironment. Edit previewenvironment_types.go to remove/update
+	// port is the port the container listens on. Defaults to 8080.
 	// +optional
-	Foo *string `json:"foo,omitempty"`
+	// +kubebuilder:default=8080
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+
+	// replicas is the number of pods to run. Defaults to 1, at most 5.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=5
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// ttl is how long the preview lives after its creation, as a duration such
+	// as "24h" or "90m", between 1h and 168h (7 days). Defaults to 24h.
+	// +optional
+	// +kubebuilder:default="24h"
+	// +kubebuilder:validation:Type=string
+	// +kubebuilder:validation:XValidation:rule="self.matches('^([0-9]+([.][0-9]+)?(h|m|s))+$') && duration(self) >= duration('1h') && duration(self) <= duration('168h')",message="ttl must be a duration such as 24h or 90m, between 1h and 168h"
+	TTL *metav1.Duration `json:"ttl,omitempty"`
+
+	// env sets environment variables in the container. Names are unique.
+	// Values are stored in plain text in the object: do not put secrets here.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=64
+	Env []EnvVar `json:"env,omitempty"`
+}
+
+// EnvVar is an environment variable set in the preview's container.
+type EnvVar struct {
+	// name of the variable, for example LOG_LEVEL.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:Pattern=`^[A-Za-z_][A-Za-z0-9_]*$`
+	Name string `json:"name"`
+
+	// value of the variable. Empty by default.
+	// +optional
+	// +kubebuilder:validation:MaxLength=4096
+	Value string `json:"value,omitempty"`
 }
 
 // PreviewEnvironmentStatus defines the observed state of PreviewEnvironment.
