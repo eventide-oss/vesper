@@ -40,9 +40,10 @@ func noArgs(cmd *cobra.Command, args []string) error {
 // and parse arguments: it prints nothing on error (SilenceErrors and
 // SilenceUsage) so that run alone decides the messages and the exit code.
 //
-// The global flags are written into opts, which is handed to the commands
-// that talk to a cluster.
-func newRootCmd(stdout, stderr io.Writer, opts *globalOptions) *cobra.Command {
+// The global flags are written into opts. Commands that talk to a cluster
+// receive factory and never build a Kubernetes client themselves, so tests
+// can inject a fake one.
+func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFactory) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "vesperctl",
 		Short:         "Manage Vesper preview environments",
@@ -92,7 +93,8 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 		args = []string{}
 	}
 
-	root := newRootCmd(stdout, stderr, newGlobalOptions(getenv))
+	opts := newGlobalOptions(getenv)
+	root := newRootCmd(stdout, stderr, opts, newKubeFactory(opts))
 	root.SetArgs(args)
 
 	cmd, err := root.ExecuteC()

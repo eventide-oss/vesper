@@ -19,7 +19,7 @@ func parseGlobalOptions(t *testing.T, args []string, env map[string]string) *glo
 	t.Helper()
 
 	opts := newGlobalOptions(fakeEnv(env))
-	root := newRootCmd(io.Discard, io.Discard, opts)
+	root := newRootCmd(io.Discard, io.Discard, opts, newKubeFactory(opts))
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute(%q) error = %v", args, err)
