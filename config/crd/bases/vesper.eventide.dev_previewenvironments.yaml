@@ -11,14 +11,38 @@ spec:
     kind: PreviewEnvironment
     listKind: PreviewEnvironmentList
     plural: previewenvironments
+    shortNames:
+    - pe
     singular: previewenvironment
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .status.expiresAt
+      name: Expires
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - jsonPath: .spec.image
+      name: Image
+      priority: 1
+      type: string
+    - jsonPath: .spec.ttl
+      name: TTL
+      priority: 1
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: PreviewEnvironment is the Schema for the previewenvironments
-          API
+        description: |-
+          PreviewEnvironment is a temporary environment that runs one container
+          image, for example the build of a pull request, until its TTL expires.
         properties:
           apiVersion:
             description: |-
@@ -118,15 +142,9 @@ spec:
             properties:
               conditions:
                 description: |-
-                  conditions represent the current state of the PreviewEnvironment resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
+                  conditions describe the state of the preview in detail. The main type
+                  is "Ready". Each condition has a status (True, False or Unknown), a
+                  machine-readable reason and a human-readable message.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -185,6 +203,34 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              expiresAt:
+                description: |-
+                  expiresAt is when the preview will be deleted: its creation time plus
+                  its ttl.
+                format: date-time
+                type: string
+              observedGeneration:
+                description: |-
+                  observedGeneration is the metadata.generation of the spec this status
+                  reflects. When it is lower than metadata.generation, the operator has
+                  not processed the latest change yet.
+                format: int64
+                minimum: 0
+                type: integer
+              phase:
+                description: |-
+                  phase summarizes the state of the preview: Pending, Ready, Failed or
+                  Expired.
+                enum:
+                - Pending
+                - Ready
+                - Failed
+                - Expired
+                type: string
+              url:
+                description: url is the address where the preview can be reached.
+                maxLength: 2048
+                type: string
             type: object
         required:
         - spec
