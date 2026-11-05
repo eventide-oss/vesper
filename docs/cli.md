@@ -108,13 +108,13 @@ object.
 | --- | --- | --- |
 | `name`, `namespace` | string | always present |
 | `createdAt` | string | creation time, RFC 3339 in UTC |
-| `phase` | string | current phase; omitted until the controller sets it |
+| `phase` | string | `Pending`, `Ready`, `Failed` or `Expired`; omitted until the controller sets it |
 | `url` | string | address of the preview; omitted until set |
 | `expiresAt` | string | when the preview is deleted, RFC 3339 in UTC; omitted until set |
 | `spec.image`, `spec.ttl` | string | as requested; omitted when unset |
 | `spec.port`, `spec.replicas` | integer | as requested; omitted when unset |
 | `spec.envCount` | integer | number of environment variables; names and values are never printed |
-| `conditions[]` | array | `type`, `status`, `reason`, `message`, `lastTransitionTime`, in the order the controller set them; omitted when empty |
+| `conditions[]` | array | `type` (the main one is `Ready`), `status`, `reason`, `message`, `lastTransitionTime`, in the order the controller set them; omitted when empty |
 
 JSON fields keep this order. YAML keys are sorted alphabetically, as kubectl
 does.
