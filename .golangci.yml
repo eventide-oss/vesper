@@ -1,5 +1,10 @@
 version: "2"
 
+run:
+  # Also lint the files behind the integration build tag (test/integration).
+  build-tags:
+    - integration
+
 linters:
   # Added on top of the default set (errcheck, govet, ineffassign,
   # staticcheck, unused).

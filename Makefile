@@ -1,4 +1,4 @@
-.PHONY: build test vet lint kind-up kind-down
+.PHONY: build test test-integration vet lint kind-up kind-down
 
 # The version is injected at build time. Override it with `make build VERSION=v0.1.0`.
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -9,6 +9,11 @@ build:
 
 test:
 	go test -race ./...
+
+# Runs vesperctl against the kind cluster (created if missing) with a stub CRD.
+# -count=1 disables the test cache: the result depends on the cluster.
+test-integration: kind-up
+	VESPER_IT_CONTEXT=kind-$(KIND_CLUSTER) go test -race -count=1 -tags integration ./test/integration/...
 
 vet:
 	go vet ./...
