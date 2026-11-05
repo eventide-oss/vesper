@@ -66,7 +66,7 @@ func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFac
 	// Persistent flags are inherited by every subcommand, as in kubectl.
 	opts.addFlags(root.PersistentFlags())
 
-	root.AddCommand(newVersionCmd())
+	root.AddCommand(newVersionCmd(), newListCmd(factory))
 	return root
 }
 
@@ -95,6 +95,12 @@ func run(args []string, stdout, stderr io.Writer, getenv func(string) string) in
 
 	opts := newGlobalOptions(getenv)
 	root := newRootCmd(stdout, stderr, opts, newKubeFactory(opts))
+	return execute(root, args, stderr)
+}
+
+// execute runs root with args, prints the error if any, and returns the exit
+// code. Tests call it with a root built around a fake clientFactory.
+func execute(root *cobra.Command, args []string, stderr io.Writer) int {
 	root.SetArgs(args)
 
 	cmd, err := root.ExecuteC()
