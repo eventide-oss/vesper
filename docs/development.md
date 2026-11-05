@@ -65,9 +65,34 @@ make docker-build IMG=vesper-manager:dev
 ```
 
 `make run` uses whatever cluster your current kubectl context points to: check
-it with `kubectl config current-context` first. Stop the manager with Ctrl-C.
-It has no controller yet, so it only starts its health probes
-(`curl localhost:8081/healthz`).
+it with `kubectl config current-context` first. It reconciles every
+`PreviewEnvironment` of that cluster, and writes their status. Stop the manager
+with Ctrl-C. Its health probes answer on `curl localhost:8081/healthz`.
+
+### What the operator does
+
+The controller is in `internal/controller`. For each `PreviewEnvironment` it:
+
+1. creates a dedicated namespace named `vesper-<namespace>-<name>-<hash>`
+   (`NamespaceName` in `naming.go`): truncated to 63 characters, with an
+   8-character hash of `<namespace>/<name>` so that two previews never share a
+   namespace. The same preview always gets the same name;
+2. labels it with `app.kubernetes.io/managed-by=vesper` and
+   `vesper.eventide.dev/preview-namespace` and `vesper.eventide.dev/preview-name`,
+   which record its preview (a cluster-scoped namespace cannot have a
+   namespaced owner reference), and with
+   `pod-security.kubernetes.io/enforce=restricted`;
+3. sets the phase to `Pending` and the `Ready` condition to `False` with the
+   reason `Provisioning`, until the application is deployed.
+
+If a namespace of that name exists without the labels of that preview, the
+operator does not touch it: the phase becomes `Failed` with the reason
+`NamespaceConflict`. A namespace deleted by hand is created again.
+
+Not yet: the application is not deployed (#31, #32), and deleting a preview
+leaves its namespace. Cleanup on deletion comes with a finalizer in P3; until
+then, delete it with
+`kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>`.
 
 ### Change the API
 

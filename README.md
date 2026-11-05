@@ -7,8 +7,8 @@ Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 removes it automatically when its time to live (TTL) expires.
 
 > **Status:** pre-alpha. The `PreviewEnvironment` API and the read-only CLI
-> work today; the operator that creates environments does not exist yet. See
-> [Status](#status).
+> work today; the operator only creates the namespace of each preview so far.
+> See [Status](#status).
 
 ## Why
 
@@ -73,6 +73,8 @@ Works today:
   and defaults applied by the API server (the image must be pinned with a tag
   other than `latest` or with a digest) and a status that only the operator can
   write. `kubectl get pe` shows the phase, the URL and the expiry.
+- The operator, in its first step: it gives each preview its own namespace,
+  with the restricted Pod Security profile, and reports `Pending`.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
   the [vesperctl reference](docs/cli.md).
@@ -83,7 +85,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| The operator: namespace, Deployment, Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
+| The operator deploys the application: Deployment, Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
 | Ingress address, TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
@@ -106,9 +108,11 @@ kubectl apply -f config/samples/vesper_v1alpha1_previewenvironment.yaml
 kubectl get pe -A
 ```
 
-The API server validates the preview and fills its defaults. Nothing runs for
-it yet: its phase stays empty until the operator exists. `make uninstall`
-removes the CRD and every `PreviewEnvironment` with it.
+The API server validates the preview and fills its defaults. Its phase stays
+empty until you run the operator (`make run`, see
+[Development](docs/development.md#run-the-operator)), which creates its
+namespace and sets it to `Pending`: the application itself is not deployed
+yet. `make uninstall` removes the CRD and every `PreviewEnvironment` with it.
 
 ## Contributing
 
