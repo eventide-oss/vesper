@@ -39,7 +39,10 @@ func noArgs(cmd *cobra.Command, args []string) error {
 // newRootCmd builds the command tree. Cobra is only used to describe commands
 // and parse arguments: it prints nothing on error (SilenceErrors and
 // SilenceUsage) so that run alone decides the messages and the exit code.
-func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
+//
+// The global flags are written into opts, which is handed to the commands
+// that talk to a cluster.
+func newRootCmd(stdout, stderr io.Writer, opts *globalOptions) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "vesperctl",
 		Short:         "Manage Vesper preview environments",
@@ -59,6 +62,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	})
 	// Shell completion is added later; do not expose Cobra's default command.
 	root.CompletionOptions.DisableDefaultCmd = true
+	// Persistent flags are inherited by every subcommand, as in kubectl.
+	opts.addFlags(root.PersistentFlags())
 
 	root.AddCommand(newVersionCmd())
 	return root
@@ -78,16 +83,16 @@ func newVersionCmd() *cobra.Command {
 }
 
 // run executes the command in args (the program name excluded), writes to
-// stdout and stderr, and returns the process exit code. It never calls
-// os.Exit, so tests can call it directly.
-func run(args []string, stdout, stderr io.Writer) int {
+// stdout and stderr, reads the environment through getenv, and returns the
+// process exit code. It never calls os.Exit, so tests can call it directly.
+func run(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
 	// Cobra reads os.Args[1:] when the arguments are nil, which would make a
 	// test binary parse its own -test.* flags. An empty slice avoids that.
 	if args == nil {
 		args = []string{}
 	}
 
-	root := newRootCmd(stdout, stderr)
+	root := newRootCmd(stdout, stderr, newGlobalOptions(getenv))
 	root.SetArgs(args)
 
 	cmd, err := root.ExecuteC()

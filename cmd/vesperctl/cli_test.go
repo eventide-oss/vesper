@@ -64,6 +64,24 @@ func TestRun(t *testing.T) {
 			wantStdout: "Available Commands:",
 		},
 		{
+			name:       "help documents the global flags",
+			args:       []string{"version", "--help"},
+			wantCode:   exitOK,
+			wantStdout: "Global Flags:",
+		},
+		{
+			name:       "global flag after a subcommand",
+			args:       []string{"version", "-n", "team-a"},
+			wantCode:   exitOK,
+			wantStdout: "vesperctl version",
+		},
+		{
+			name:       "global flag without a value",
+			args:       []string{"--namespace"},
+			wantCode:   exitUsage,
+			wantStderr: "flag needs an argument: --namespace",
+		},
+		{
 			name:       "help command for a subcommand",
 			args:       []string{"help", "version"},
 			wantCode:   exitOK,
@@ -75,7 +93,7 @@ func TestRun(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 
-			got := run(tt.args, &stdout, &stderr)
+			got := run(tt.args, &stdout, &stderr, emptyEnv)
 
 			if got != tt.wantCode {
 				t.Errorf("exit code = %d, want %d", got, tt.wantCode)
@@ -92,13 +110,16 @@ func TestRunVersionUsesBuildVersion(t *testing.T) {
 	t.Cleanup(func() { version = old })
 
 	var stdout, stderr bytes.Buffer
-	if got := run([]string{"version"}, &stdout, &stderr); got != exitOK {
+	if got := run([]string{"version"}, &stdout, &stderr, emptyEnv); got != exitOK {
 		t.Fatalf("exit code = %d, want %d", got, exitOK)
 	}
 	if want := "vesperctl version v1.2.3 ("; !strings.Contains(stdout.String(), want) {
 		t.Errorf("stdout = %q, want it to contain %q", stdout.String(), want)
 	}
 }
+
+// emptyEnv is a getenv function for an empty environment.
+func emptyEnv(string) string { return "" }
 
 // failingWriter is an io.Writer whose writes always fail, like a closed pipe.
 type failingWriter struct{}
@@ -108,7 +129,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("write fa
 func TestRunStdoutWriteErrorIsAFailure(t *testing.T) {
 	var stderr bytes.Buffer
 
-	got := run([]string{"version"}, failingWriter{}, &stderr)
+	got := run([]string{"version"}, failingWriter{}, &stderr, emptyEnv)
 
 	if got != exitFailure {
 		t.Errorf("exit code = %d, want %d", got, exitFailure)
