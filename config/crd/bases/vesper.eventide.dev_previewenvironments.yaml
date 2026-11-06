@@ -37,6 +37,10 @@ spec:
       name: TTL
       priority: 1
       type: string
+    - jsonPath: .status.internalURL
+      name: Internal URL
+      priority: 1
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -208,6 +212,13 @@ spec:
                   expiresAt is when the preview will be deleted: its creation time plus
                   its ttl.
                 format: date-time
+                type: string
+              internalURL:
+                description: |-
+                  internalURL is the address of the preview inside the cluster: its
+                  Service, for example http://app.vesper-team-a-pr-42-3f9c2a1b.svc.cluster.local.
+                  It is not reachable from outside the cluster.
+                maxLength: 2048
                 type: string
               observedGeneration:
                 description: |-

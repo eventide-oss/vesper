@@ -54,7 +54,7 @@ const (
 )
 
 // PreviewEnvironmentReconciler runs each PreviewEnvironment in its own
-// namespace: a Deployment of its image.
+// namespace: a Deployment of its image, behind a Service.
 type PreviewEnvironmentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -64,6 +64,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=get;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
@@ -89,7 +90,7 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if !owned {
 		log.Info("namespace exists and was not created by Vesper for this preview: leaving it untouched",
 			"previewNamespace", name)
-		return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhaseFailed, metav1.ConditionFalse,
+		return ctrl.Result{}, r.setStatus(ctx, &preview, "", vesperv1alpha1.PhaseFailed, metav1.ConditionFalse,
 			vesperv1alpha1.ReasonNamespaceConflict,
 			fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name))
 	}
@@ -98,14 +99,18 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := r.ensureService(ctx, &preview, name); err != nil {
+		return ctrl.Result{}, err
+	}
+	address := internalURL(name)
 	// The Deployment's status changes as its pods start: its watch brings the
 	// preview back here, and the status follows.
 	available, message := deploymentAvailable(deployment)
 	if available {
-		return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhaseReady, metav1.ConditionTrue,
+		return ctrl.Result{}, r.setStatus(ctx, &preview, address, vesperv1alpha1.PhaseReady, metav1.ConditionTrue,
 			vesperv1alpha1.ReasonDeploymentAvailable, message)
 	}
-	return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhasePending, metav1.ConditionFalse,
+	return ctrl.Result{}, r.setStatus(ctx, &preview, address, vesperv1alpha1.PhasePending, metav1.ConditionFalse,
 		vesperv1alpha1.ReasonProvisioning, message)
 }
 
@@ -149,13 +154,15 @@ func ownedBy(obj metav1.Object, preview *vesperv1alpha1.PreviewEnvironment) bool
 		labels[LabelPreviewName] == preview.Name
 }
 
-// setStatus writes the phase and the Ready condition. It does not write when
-// nothing changed, so a status update does not cause another one.
+// setStatus writes the internal URL, the phase and the Ready condition. It
+// does not write when nothing changed, so a status update does not cause
+// another one.
 func (r *PreviewEnvironmentReconciler) setStatus(
-	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment,
+	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, internalURL string,
 	phase vesperv1alpha1.Phase, ready metav1.ConditionStatus, reason, message string,
 ) error {
 	before := preview.DeepCopy()
+	preview.Status.InternalURL = internalURL
 	preview.Status.Phase = phase
 	preview.Status.ObservedGeneration = preview.Generation
 	meta.SetStatusCondition(&preview.Status.Conditions, metav1.Condition{
@@ -190,6 +197,9 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		Watches(&appsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&corev1.Service{},
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		// The objects are tied to their preview by labels, not owner

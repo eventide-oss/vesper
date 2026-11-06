@@ -107,7 +107,7 @@ const (
 	// its application is not available yet.
 	ReasonProvisioning = "Provisioning"
 	// ReasonDeploymentAvailable means every replica of the application runs
-	// the requested image.
+	// the requested image, behind its Service.
 	ReasonDeploymentAvailable = "DeploymentAvailable"
 	// ReasonNamespaceConflict means the namespace the preview needs exists and
 	// was not created by Vesper for this preview. Vesper leaves it untouched.
@@ -126,6 +126,13 @@ type PreviewEnvironmentStatus struct {
 	// +optional
 	// +kubebuilder:validation:MaxLength=2048
 	URL string `json:"url,omitempty"`
+
+	// internalURL is the address of the preview inside the cluster: its
+	// Service, for example http://app.vesper-team-a-pr-42-3f9c2a1b.svc.cluster.local.
+	// It is not reachable from outside the cluster.
+	// +optional
+	// +kubebuilder:validation:MaxLength=2048
+	InternalURL string `json:"internalURL,omitempty"`
 
 	// expiresAt is when the preview will be deleted: its creation time plus
 	// its ttl.
@@ -158,6 +165,7 @@ type PreviewEnvironmentStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,priority=1
 // +kubebuilder:printcolumn:name="TTL",type=string,JSONPath=`.spec.ttl`,priority=1
+// +kubebuilder:printcolumn:name="Internal URL",type=string,JSONPath=`.status.internalURL`,priority=1
 
 // PreviewEnvironment is a temporary environment that runs one container
 // image, for example the build of a pull request, until its TTL expires.
