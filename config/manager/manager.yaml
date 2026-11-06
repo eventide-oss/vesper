@@ -5,6 +5,8 @@ metadata:
     control-plane: controller-manager
     app.kubernetes.io/name: vesper
     app.kubernetes.io/managed-by: kustomize
+    # The operator meets the restricted Pod Security Standard: enforce it.
+    pod-security.kubernetes.io/enforce: restricted
   name: system
 ---
 apiVersion: apps/v1

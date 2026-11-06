@@ -25,6 +25,7 @@ rules:
   - delete
   - get
   - list
+  - patch
   - watch
 - apiGroups:
   - apps
@@ -70,13 +71,6 @@ rules:
 - apiGroups:
   - vesper.eventide.dev
   resources:
-  - previewenvironments/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - vesper.eventide.dev
-  resources:
   - previewenvironments/status
   verbs:
-  - get
   - patch

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"maps"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -66,9 +67,8 @@ type PreviewEnvironmentReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch;delete
-// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=get;patch
-// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=patch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
@@ -157,26 +157,27 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	return result, r.setStatus(ctx, &preview, update)
 }
 
-// ensureNamespace creates the namespace of the preview if it does not exist.
-// It reports false when a namespace of that name exists but does not belong
-// to the preview; it never modifies such a namespace.
+// ensureNamespace creates the namespace of the preview if it does not exist,
+// and restores its labels if they were changed. It reports false when a
+// namespace of that name exists but does not belong to the preview; it never
+// modifies such a namespace.
 func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, name string,
 ) (bool, error) {
 	var ns corev1.Namespace
 	err := r.Get(ctx, types.NamespacedName{Name: name}, &ns)
 	if err == nil {
-		return ownedBy(&ns, preview), nil
+		if !ownedBy(&ns, preview) {
+			return false, nil
+		}
+		return true, r.restoreNamespaceLabels(ctx, &ns, preview)
 	}
 	if !apierrors.IsNotFound(err) {
 		return false, fmt.Errorf("get namespace %s: %w", name, err)
 	}
 
-	ns = corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
-		Name:   name,
-		Labels: map[string]string{labelPodSecurity: "restricted"},
-	}}
-	setPreviewLabels(&ns, preview)
+	ns = corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	setNamespaceLabels(&ns, preview)
 	if err := r.Create(ctx, &ns); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			// The cache had not seen it yet. Reconcile again to read it and
@@ -187,6 +188,32 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	}
 	logf.FromContext(ctx).Info("created namespace", "previewNamespace", name)
 	return true, nil
+}
+
+// setNamespaceLabels sets the labels Vesper owns on the namespace of the
+// preview: the preview labels, and the restricted Pod Security Standard, which
+// makes the API server reject privileged, root or extra-capability pods.
+func setNamespaceLabels(ns *corev1.Namespace, preview *vesperv1alpha1.PreviewEnvironment) {
+	setPreviewLabels(ns, preview)
+	ns.Labels[labelPodSecurity] = "restricted"
+}
+
+// restoreNamespaceLabels puts back the labels of setNamespaceLabels, for
+// example after someone lowered the Pod Security level by hand, and keeps the
+// other labels.
+func (r *PreviewEnvironmentReconciler) restoreNamespaceLabels(
+	ctx context.Context, ns *corev1.Namespace, preview *vesperv1alpha1.PreviewEnvironment,
+) error {
+	before := ns.DeepCopy()
+	setNamespaceLabels(ns, preview)
+	if maps.Equal(before.Labels, ns.Labels) {
+		return nil
+	}
+	if err := r.Patch(ctx, ns, client.MergeFrom(before)); err != nil {
+		return fmt.Errorf("restore labels of namespace %s: %w", ns.Name, err)
+	}
+	logf.FromContext(ctx).Info("restored namespace labels", "previewNamespace", ns.Name)
+	return nil
 }
 
 // statusUpdate is what a reconciliation writes to the status of a preview.
