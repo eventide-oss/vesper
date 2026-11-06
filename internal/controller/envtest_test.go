@@ -283,7 +283,7 @@ func TestEnvtestAPIValidation(t *testing.T) {
 		{"uppercase image", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.Image = "ghcr.io/Acme/app:1" }, "spec.image"},
 		{"port too high", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.Port = 70000 }, "spec.port"},
 		{"too many replicas", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.Replicas = 6 }, "spec.replicas"},
-		{"ttl too short", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.TTL = ttl(30 * time.Minute) }, "spec.ttl"},
+		{"ttl too short", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.TTL = ttl(30 * time.Second) }, "spec.ttl"},
 		{"ttl too long", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) { s.TTL = ttl(200 * time.Hour) }, "spec.ttl"},
 		{"bad env name", "", func(s *vesperv1alpha1.PreviewEnvironmentSpec) {
 			s.Env = []vesperv1alpha1.EnvVar{{Name: "1BAD"}}

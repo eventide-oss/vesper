@@ -131,13 +131,15 @@ spec:
                 default: 24h
                 description: |-
                   ttl is how long the preview lives after its creation, as a duration such
-                  as "24h" or "90m", between 1h and 168h (7 days). Defaults to 24h.
+                  as "24h" or "90m", between 1m and 168h (7 days). Defaults to 24h. When it
+                  has passed, the preview is deleted. Raise it to extend the preview: the
+                  total lifetime stays within 168h.
                 type: string
                 x-kubernetes-validations:
-                - message: ttl must be a duration such as 24h or 90m, between 1h and
+                - message: ttl must be a duration such as 24h or 90m, between 1m and
                     168h
                   rule: self.matches('^([0-9]+([.][0-9]+)?(h|m|s))+$') && duration(self)
-                    >= duration('1h') && duration(self) <= duration('168h')
+                    >= duration('1m') && duration(self) <= duration('168h')
             required:
             - image
             type: object

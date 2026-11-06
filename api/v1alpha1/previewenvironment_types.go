@@ -50,11 +50,13 @@ type PreviewEnvironmentSpec struct {
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// ttl is how long the preview lives after its creation, as a duration such
-	// as "24h" or "90m", between 1h and 168h (7 days). Defaults to 24h.
+	// as "24h" or "90m", between 1m and 168h (7 days). Defaults to 24h. When it
+	// has passed, the preview is deleted. Raise it to extend the preview: the
+	// total lifetime stays within 168h.
 	// +optional
 	// +kubebuilder:default="24h"
 	// +kubebuilder:validation:Type=string
-	// +kubebuilder:validation:XValidation:rule="self.matches('^([0-9]+([.][0-9]+)?(h|m|s))+$') && duration(self) >= duration('1h') && duration(self) <= duration('168h')",message="ttl must be a duration such as 24h or 90m, between 1h and 168h"
+	// +kubebuilder:validation:XValidation:rule="self.matches('^([0-9]+([.][0-9]+)?(h|m|s))+$') && duration(self) >= duration('1m') && duration(self) <= duration('168h')",message="ttl must be a duration such as 24h or 90m, between 1m and 168h"
 	TTL *metav1.Duration `json:"ttl,omitempty"`
 
 	// env sets environment variables in the container. Names are unique.
@@ -112,6 +114,9 @@ const (
 	// ReasonNamespaceConflict means the namespace the preview needs exists and
 	// was not created by Vesper for this preview. Vesper leaves it untouched.
 	ReasonNamespaceConflict = "NamespaceConflict"
+	// ReasonExpired means the ttl of the preview has passed: it is being
+	// deleted.
+	ReasonExpired = "Expired"
 )
 
 // PreviewEnvironmentStatus is the state of a preview as observed by the
