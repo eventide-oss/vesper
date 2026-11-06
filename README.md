@@ -93,29 +93,105 @@ Not yet:
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
-## Try the CLI
+## Try it locally
 
-You need Go, Docker and [kind](https://kind.sigs.k8s.io/); see
-[Development](docs/development.md).
+This walkthrough runs Vesper on a local [kind](https://kind.sigs.k8s.io/)
+cluster and deploys one preview. You need Go, Docker, kind and kubectl; see
+[Development](docs/development.md#prerequisites).
+
+Vesper has two parts, and both must be in place before a preview does
+anything:
+
+- **The API** (the CRD): it teaches the cluster the `PreviewEnvironment` type,
+  so it can store and validate previews. On its own, a stored preview is only
+  a record: nothing runs.
+- **The operator**: the program that watches previews and creates their
+  namespace, Deployment and Service, then writes their status. For now you run
+  it on your machine with `make run`; an in-cluster install comes later.
+
+Use `kubectl` to create, change and delete previews, as for any Kubernetes
+object. Use `vesperctl` to read them in a friendlier way; it will also create
+and delete them later.
+
+**1. Build the binaries.** `bin/vesperctl` is the CLI, `bin/manager` the
+operator.
 
 ```sh
 make build
 ./bin/vesperctl version
-
-# A local cluster with the PreviewEnvironment CRD and a sample preview:
-make kind-up
-kubectl config use-context kind-vesper-dev
-make install
-kubectl apply -f config/samples/vesper_v1alpha1_previewenvironment.yaml
-./bin/vesperctl list -A
-kubectl get pe -A
 ```
 
-The API server validates the preview and fills its defaults. Its phase stays
-empty until you run the operator (`make run`, see
-[Development](docs/development.md#run-the-operator)), which deploys it and
-sets it to `Ready`. `make uninstall` removes the CRD and every
-`PreviewEnvironment` with it.
+**2. Create a local cluster and select it.** Every `kubectl` command, and the
+operator, act on the cluster of the current context.
+
+```sh
+make kind-up
+kubectl config use-context kind-vesper-dev
+```
+
+**3. Install the API.** The cluster now knows the `PreviewEnvironment` type
+(short name `pe`).
+
+```sh
+make install
+kubectl get crd previewenvironments.vesper.eventide.dev
+```
+
+**4. Run the operator, in a second terminal.** It stays in the foreground and
+logs what it does; leave it running. Stop it with Ctrl-C.
+
+```sh
+make run
+```
+
+**5. Create a preview** from the sample: an unprivileged nginx image, kept
+for 24 hours.
+
+```sh
+kubectl apply -f config/samples/vesper_v1alpha1_previewenvironment.yaml
+```
+
+**6. Watch it become `Ready`.** The phase goes from `Pending` to `Ready` once
+its pod runs, usually within a minute while the image downloads. Stop
+`kubectl get -w` with Ctrl-C.
+
+```sh
+kubectl get pe -w
+./bin/vesperctl list -A
+./bin/vesperctl get previewenvironment-sample
+```
+
+**7. Look inside it.** Each preview has a namespace of its own, which carries
+the name of the preview in a label. It holds a Deployment named `app`, its
+pod, and a Service named `app`.
+
+```sh
+NS=$(kubectl get ns -l vesper.eventide.dev/preview-name=previewenvironment-sample \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl get deploy,pods,svc -n "$NS"
+```
+
+**8. Open it.** A preview has no public address yet, only an address inside
+the cluster (`kubectl get pe -o wide` shows it). Forward a local port to its
+Service, then open <http://localhost:8080> in a browser.
+
+```sh
+kubectl port-forward -n "$NS" svc/app 8080:80
+```
+
+**9. Clean up.** Deleting a preview does not delete its namespace yet, so
+delete both. Then stop the operator (Ctrl-C), and remove the API or the
+whole cluster.
+
+```sh
+kubectl delete -f config/samples/vesper_v1alpha1_previewenvironment.yaml
+kubectl delete namespace "$NS"
+make uninstall   # removes the CRD and every PreviewEnvironment with it
+make kind-down   # or delete the whole cluster
+```
+
+What the operator does, and why, is described in
+[Development](docs/development.md#what-the-operator-does).
 
 ## Contributing
 
