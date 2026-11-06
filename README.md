@@ -7,7 +7,8 @@ Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 removes it automatically when its time to live (TTL) expires.
 
 > **Status:** pre-alpha. The `PreviewEnvironment` API and the read-only CLI
-> work today; the operator only creates the namespace of each preview so far.
+> work today, and the operator runs each preview's image in its own namespace;
+> it does not give it an address yet.
 > See [Status](#status).
 
 ## Why
@@ -45,7 +46,7 @@ flowchart LR
     op -.->|"deletes when the TTL expires"| ns
 
     classDef planned stroke-dasharray: 5 5
-    class op,deploy,svc,ingress planned
+    class svc,ingress planned
 ```
 
 1. A pull request changes the application.
@@ -73,8 +74,10 @@ Works today:
   and defaults applied by the API server (the image must be pinned with a tag
   other than `latest` or with a digest) and a status that only the operator can
   write. `kubectl get pe` shows the phase, the URL and the expiry.
-- The operator, in its first step: it gives each preview its own namespace,
-  with the restricted Pod Security profile, and reports `Pending`.
+- The operator runs each preview in its own namespace, with the restricted Pod
+  Security profile: a Deployment of its image, port, environment and replicas.
+  The preview becomes `Ready` when every replica runs. Images must run as a
+  non-root user.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
   the [vesperctl reference](docs/cli.md).
@@ -85,7 +88,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| The operator deploys the application: Deployment, Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
+| The operator exposes the application inside the cluster: Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
 | Ingress address, TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
@@ -110,9 +113,9 @@ kubectl get pe -A
 
 The API server validates the preview and fills its defaults. Its phase stays
 empty until you run the operator (`make run`, see
-[Development](docs/development.md#run-the-operator)), which creates its
-namespace and sets it to `Pending`: the application itself is not deployed
-yet. `make uninstall` removes the CRD and every `PreviewEnvironment` with it.
+[Development](docs/development.md#run-the-operator)), which deploys it and
+sets it to `Ready`. `make uninstall` removes the CRD and every
+`PreviewEnvironment` with it.
 
 ## Contributing
 

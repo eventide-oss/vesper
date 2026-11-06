@@ -82,15 +82,36 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    which record its preview (a cluster-scoped namespace cannot have a
    namespaced owner reference), and with
    `pod-security.kubernetes.io/enforce=restricted`;
-3. sets the phase to `Pending` and the `Ready` condition to `False` with the
-   reason `Provisioning`, until the application is deployed.
+3. creates or updates a Deployment named `app` in it (`deployment.go`): the
+   image, the port (named `http`), the environment variables and the replicas
+   of the spec. Its pods run with the restricted Pod Security settings:
+   `runAsNonRoot`, no privilege escalation, all capabilities dropped, the
+   `RuntimeDefault` seccomp profile and no ServiceAccount token. **The image
+   must run as a non-root user**: an image that runs as root, such as the
+   official `nginx`, stays in `CreateContainerConfigError`
+   (`nginxinc/nginx-unprivileged` works);
+4. sets the phase to `Ready`, with the `Ready` condition `True`
+   (`DeploymentAvailable`), when every replica runs the requested image, and
+   to `Pending` (`Provisioning`, for example "0/2 replicas available") until
+   then.
+
+The Deployment is written with `controllerutil.CreateOrUpdate`, which sets only
+the fields Vesper owns and keeps the defaults the API server adds, so a
+reconciliation that changes nothing writes nothing. Its objects carry the
+labels of their preview rather than owner references, which cannot point to
+another namespace.
 
 If a namespace of that name exists without the labels of that preview, the
 operator does not touch it: the phase becomes `Failed` with the reason
-`NamespaceConflict`. A namespace deleted by hand is created again.
+`NamespaceConflict`. A namespace or a Deployment deleted or changed by hand is
+restored. To reach a preview before it has an address:
 
-Not yet: the application is not deployed (#31, #32), and deleting a preview
-leaves its namespace. Cleanup on deletion comes with a finalizer in P3; until
+```sh
+kubectl port-forward -n <preview namespace> deploy/app 8080:<port>
+```
+
+Not yet: a Service (#32) and an address (P3), and deleting a preview leaves
+its namespace. Cleanup on deletion comes with a finalizer in P3; until
 then, delete it with
 `kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>`.
 
