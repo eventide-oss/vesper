@@ -49,9 +49,10 @@ type PreviewEnvironmentReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch
+// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=get;patch
-// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 
@@ -67,8 +68,10 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	if !preview.DeletionTimestamp.IsZero() {
-		// Cleanup on deletion comes with a finalizer (P3).
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, r.cleanup(ctx, &preview)
+	}
+	if err := r.ensureFinalizer(ctx, &preview); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	name := NamespaceName(preview.Namespace, preview.Name)
@@ -171,7 +174,8 @@ func (r *PreviewEnvironmentReconciler) setStatus(
 func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		// Status updates do not change the generation, so the operator does
-		// not wake itself up when it writes the status.
+		// not wake itself up when it writes the status. Deleting a preview
+		// that has a finalizer increases it, so the cleanup runs.
 		For(&vesperv1alpha1.PreviewEnvironment{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&corev1.Namespace{},

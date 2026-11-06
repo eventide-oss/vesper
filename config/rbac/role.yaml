@@ -10,6 +10,7 @@ rules:
   - namespaces
   verbs:
   - create
+  - delete
   - get
   - list
   - watch
@@ -40,7 +41,14 @@ rules:
   verbs:
   - get
   - list
+  - patch
   - watch
+- apiGroups:
+  - vesper.eventide.dev
+  resources:
+  - previewenvironments/finalizers
+  verbs:
+  - update
 - apiGroups:
   - vesper.eventide.dev
   resources:
