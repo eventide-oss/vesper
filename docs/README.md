@@ -4,8 +4,10 @@
   error messages.
 - [Development](development.md): tools and the local kind cluster.
 - [Architecture Decision Records](adr/): why we made the important decisions.
-  Start from [the template](adr/0000-template.md); the first record is
-  [ADR-0001: Use Kubebuilder](adr/0001-use-kubebuilder.md).
+  Start from [the template](adr/0000-template.md).
+  - [ADR-0001: Use Kubebuilder](adr/0001-use-kubebuilder.md)
+  - [ADR-0002: Run each preview in a namespace of its own, tracked by labels](adr/0002-namespace-per-preview.md)
+  - [ADR-0003: Make PreviewEnvironment a namespaced resource](adr/0003-namespaced-preview-environment.md)
 - [Learning journal](journal/): notes after each work session, from
   [the template](journal/TEMPLATE.md).
 
