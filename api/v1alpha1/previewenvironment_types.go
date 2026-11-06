@@ -103,8 +103,12 @@ const ConditionReady = "Ready"
 
 // Reasons of the Ready condition.
 const (
-	// ReasonProvisioning means the operator is setting up the preview.
+	// ReasonProvisioning means the operator is setting up the preview, or
+	// its application is not available yet.
 	ReasonProvisioning = "Provisioning"
+	// ReasonDeploymentAvailable means every replica of the application runs
+	// the requested image.
+	ReasonDeploymentAvailable = "DeploymentAvailable"
 	// ReasonNamespaceConflict means the namespace the preview needs exists and
 	// was not created by Vesper for this preview. Vesper leaves it untouched.
 	ReasonNamespaceConflict = "NamespaceConflict"

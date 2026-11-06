@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -52,7 +53,8 @@ const (
 	labelPodSecurity = "pod-security.kubernetes.io/enforce"
 )
 
-// PreviewEnvironmentReconciler gives each PreviewEnvironment its own namespace.
+// PreviewEnvironmentReconciler runs each PreviewEnvironment in its own
+// namespace: a Deployment of its image.
 type PreviewEnvironmentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
@@ -61,6 +63,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=get;patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
@@ -86,13 +89,24 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if !owned {
 		log.Info("namespace exists and was not created by Vesper for this preview: leaving it untouched",
 			"previewNamespace", name)
-		return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhaseFailed,
+		return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhaseFailed, metav1.ConditionFalse,
 			vesperv1alpha1.ReasonNamespaceConflict,
 			fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name))
 	}
-	return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhasePending,
-		vesperv1alpha1.ReasonProvisioning,
-		fmt.Sprintf("namespace %s is ready; the application is not deployed yet", name))
+
+	deployment, err := r.ensureDeployment(ctx, &preview, name)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	// The Deployment's status changes as its pods start: its watch brings the
+	// preview back here, and the status follows.
+	available, message := deploymentAvailable(deployment)
+	if available {
+		return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhaseReady, metav1.ConditionTrue,
+			vesperv1alpha1.ReasonDeploymentAvailable, message)
+	}
+	return ctrl.Result{}, r.setStatus(ctx, &preview, vesperv1alpha1.PhasePending, metav1.ConditionFalse,
+		vesperv1alpha1.ReasonProvisioning, message)
 }
 
 // ensureNamespace creates the namespace of the preview if it does not exist.
@@ -111,14 +125,10 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	}
 
 	ns = corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
-		Name: name,
-		Labels: map[string]string{
-			LabelManagedBy:        ManagedByVesper,
-			LabelPreviewNamespace: preview.Namespace,
-			LabelPreviewName:      preview.Name,
-			labelPodSecurity:      "restricted",
-		},
+		Name:   name,
+		Labels: previewLabels(preview),
 	}}
+	ns.Labels[labelPodSecurity] = "restricted"
 	if err := r.Create(ctx, &ns); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			// The cache had not seen it yet. Reconcile again to read it and
@@ -131,27 +141,26 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	return true, nil
 }
 
-// ownedBy reports whether Vesper created ns for preview.
-func ownedBy(ns *corev1.Namespace, preview *vesperv1alpha1.PreviewEnvironment) bool {
-	labels := ns.GetLabels()
+// ownedBy reports whether Vesper created obj for preview.
+func ownedBy(obj metav1.Object, preview *vesperv1alpha1.PreviewEnvironment) bool {
+	labels := obj.GetLabels()
 	return labels[LabelManagedBy] == ManagedByVesper &&
 		labels[LabelPreviewNamespace] == preview.Namespace &&
 		labels[LabelPreviewName] == preview.Name
 }
 
-// setStatus writes the phase and the Ready condition, which stays False until
-// the application runs. It does not write when nothing changed, so a status
-// update does not cause another one.
+// setStatus writes the phase and the Ready condition. It does not write when
+// nothing changed, so a status update does not cause another one.
 func (r *PreviewEnvironmentReconciler) setStatus(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment,
-	phase vesperv1alpha1.Phase, reason, message string,
+	phase vesperv1alpha1.Phase, ready metav1.ConditionStatus, reason, message string,
 ) error {
 	before := preview.DeepCopy()
 	preview.Status.Phase = phase
 	preview.Status.ObservedGeneration = preview.Generation
 	meta.SetStatusCondition(&preview.Status.Conditions, metav1.Condition{
 		Type:               vesperv1alpha1.ConditionReady,
-		Status:             metav1.ConditionFalse,
+		Status:             ready,
 		Reason:             reason,
 		Message:            message,
 		ObservedGeneration: preview.Generation,
@@ -168,8 +177,9 @@ func (r *PreviewEnvironmentReconciler) setStatus(
 }
 
 // SetupWithManager registers the controller: it reconciles a preview when its
-// spec changes, and when the namespace Vesper created for it changes or is
-// deleted, so that a namespace deleted by hand is created again.
+// spec changes, and when an object Vesper created for it changes or is
+// deleted, so that what was changed or deleted by hand is restored and the
+// status follows the Deployment.
 func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		// Status updates do not change the generation, so the operator does
@@ -177,19 +187,24 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		For(&vesperv1alpha1.PreviewEnvironment{},
 			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(&corev1.Namespace{},
-			handler.EnqueueRequestsFromMapFunc(previewOfNamespace),
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&appsv1.Deployment{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		// The objects are tied to their preview by labels, not owner
+		// references: an owner reference cannot point to another namespace.
 		Named("previewenvironment").
 		Complete(r)
 }
 
-// managedByVesper filters the namespace events to those Vesper created.
+// managedByVesper filters the events to the objects Vesper created.
 func managedByVesper(obj client.Object) bool {
 	return obj.GetLabels()[LabelManagedBy] == ManagedByVesper
 }
 
-// previewOfNamespace maps a namespace Vesper created to its preview.
-func previewOfNamespace(_ context.Context, obj client.Object) []reconcile.Request {
+// previewOfObject maps an object Vesper created to its preview.
+func previewOfObject(_ context.Context, obj client.Object) []reconcile.Request {
 	labels := obj.GetLabels()
 	namespace, name := labels[LabelPreviewNamespace], labels[LabelPreviewName]
 	if namespace == "" || name == "" {
