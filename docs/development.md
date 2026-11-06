@@ -173,8 +173,15 @@ truth for the `PreviewEnvironment` API:
 After a change, regenerate and commit the generated files:
 
 ```sh
-make manifests generate
+make manifests generate   # CRD, RBAC role (from the +kubebuilder:rbac markers) and DeepCopy methods
+make verify-generated     # what CI runs: fails if a generated file is not committed
 ```
+
+CI runs `make verify-generated` on every pull request: it regenerates the
+files with the controller-gen version pinned in the Makefile and fails if
+they differ from the committed ones, so a forgotten `make manifests generate`
+cannot reach `main`. The year in the license header of generated files is
+fixed (`YEAR` in the Makefile) so that the files do not change every January.
 
 To try the validation by hand on the kind cluster:
 
