@@ -32,9 +32,12 @@ manifests: controller-gen ## Generate the CRD and RBAC manifests from the Go typ
 generate: controller-gen ## Generate the DeepCopy methods of the API types.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt",year=$(YEAR) paths="./..."
 
+# The controller tests start a real API server and etcd (envtest): KUBEBUILDER_ASSETS
+# points them to the binaries. Without it, `go test ./...` skips those tests.
 .PHONY: test
-test: ## Run the unit tests.
-	go test -race ./...
+test: setup-envtest ## Run the unit and controller (envtest) tests.
+	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+		go test -race ./...
 
 # Runs vesperctl against the kind cluster (created if missing) with the generated CRD.
 # -count=1 disables the test cache: the result depends on the cluster.
@@ -133,9 +136,14 @@ $(LOCALBIN):
 KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
+SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest
 
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
+SETUP_ENVTEST_VERSION ?= v0.25.2
+# Version of the kube-apiserver and etcd binaries of envtest. Keep it in line with
+# the k8s.io/api version in go.mod (v0.37.x is Kubernetes 1.37).
+ENVTEST_K8S_VERSION ?= 1.37.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize into bin/ if necessary.
@@ -146,6 +154,12 @@ $(KUSTOMIZE): $(LOCALBIN)
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen into bin/ if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
 	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+
+.PHONY: setup-envtest
+setup-envtest: $(SETUP_ENVTEST) ## Download setup-envtest and the envtest binaries into bin/ if necessary.
+	@"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path >/dev/null
+$(SETUP_ENVTEST): $(LOCALBIN)
+	$(call go-install-tool,$(SETUP_ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(SETUP_ENVTEST_VERSION))
 
 # go-install-tool installs a Go tool at a given version as bin/<name>-<version>
 # and points the symlink bin/<name> to it.
