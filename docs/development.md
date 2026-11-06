@@ -180,6 +180,9 @@ carries the label `app.kubernetes.io/managed-by=vesper-integration-tests`.
   skipped.
 - A labeled CRD left by an interrupted run is removed before the tests start.
   Never add that label to a CRD yourself.
+- Stop the operator (`make run`) before you run them on the same cluster: it
+  would reconcile the test previews, overwrite the status the tests set, and
+  create namespaces for them that stay after the run (until #39).
 - The tests only run against a context named `kind-...`; they refuse any
   other cluster. `VESPER_IT_CONTEXT` selects the context, and
   `make test-integration KIND_CLUSTER=other` sets it for you.
