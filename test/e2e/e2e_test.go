@@ -16,6 +16,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,6 +33,10 @@ import (
 const (
 	// contextEnv names the kubeconfig context of the cluster under test.
 	contextEnv = "VESPER_E2E_CONTEXT"
+
+	// previewDomain is the --preview-domain of the operator, set in
+	// test/e2e/kustomization.yaml.
+	previewDomain = "preview.localtest.me"
 
 	// readyTimeout bounds the wait for a preview: the node pulls its image.
 	readyTimeout = 3 * time.Minute
@@ -157,6 +162,24 @@ func TestPreviewLifecycle(t *testing.T) {
 		}
 		return errors.New("the service has no ready endpoint")
 	})
+
+	// The preview has a public address: an Ingress for its host. kind has no
+	// ingress controller, so the routing itself is not tested here.
+	host := controller.HostName(preview.Namespace, preview.Name, previewDomain)
+	var p vesperv1alpha1.PreviewEnvironment
+	if err := c.Get(ctx, client.ObjectKeyFromObject(preview), &p); err != nil {
+		t.Fatalf("get preview: %v", err)
+	}
+	if want := "http://" + host; p.Status.URL != want {
+		t.Errorf("url = %q, want %q", p.Status.URL, want)
+	}
+	var ing networkingv1.Ingress
+	if err := c.Get(ctx, types.NamespacedName{Namespace: previewNamespace, Name: controller.IngressName}, &ing); err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if len(ing.Spec.Rules) != 1 || ing.Spec.Rules[0].Host != host {
+		t.Errorf("ingress rules = %+v, want one rule for %s", ing.Spec.Rules, host)
+	}
 
 	// Deleting the preview deletes its namespace first: the finalizer keeps
 	// the preview until the namespace is gone (#39).
