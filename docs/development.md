@@ -104,10 +104,9 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
 6. with a preview domain, creates or updates an Ingress named `app`
    (`ingress.go`) that routes the host of the preview to the Service, and
    writes its URL to `status.url` (see [Public address](#public-address));
-7. sets the phase to `Ready`, with the `Ready` condition `True`
-   (`DeploymentAvailable`), when every replica runs the requested image, and
-   to `Pending` (`Provisioning`, for example "0/2 replicas available") until
-   then.
+7. writes the status: the phase, and the conditions `Ready`, `Available` and
+   `Expired`, and records an event when the preview changes state (see
+   [Status, conditions and events](#status-conditions-and-events)).
 
 The Deployment is written with `controllerutil.CreateOrUpdate`, which sets only
 the fields Vesper owns and keeps the defaults the API server adds, so a
@@ -122,6 +121,40 @@ address:
 ```sh
 kubectl port-forward -n <preview namespace> svc/app 8080:80
 ```
+
+### Status, conditions and events
+
+`kubectl describe pe <name>` shows what the operator knows of a preview. The
+**phase** sums it up in one word: `Pending`, `Ready`, `Failed` or `Expired`.
+`Failed` is not final: when the cause goes away, the preview comes back.
+The **conditions** give the details; each has a status, a reason and a
+message:
+
+| Condition | Status and reason | Meaning |
+| --- | --- | --- |
+| `Available` | True `DeploymentAvailable` | every replica runs the requested image |
+| | False `Provisioning` | the pods are starting ("1/2 replicas available") |
+| | False `PodsRejected` | the API server rejects the pods, for example because the [quota](#resource-limits) is full; the message gives its error |
+| | False `RolloutStuck` | no progress for the progress deadline of the Deployment, 10 minutes: often an image that cannot be pulled, or a container that keeps crashing. Look at the pods of the preview namespace |
+| | False `NamespaceConflict` | the namespace of the preview exists and is not Vesper's |
+| `Expired` | False `TTLNotReached` | the message gives the expiry |
+| | True `TTLPassed` | the ttl has passed: the preview is being deleted |
+| `Ready` | the reason of `Available` | the summary: True when the application runs |
+| | False `ReconcileError` | the operator failed to set up the preview, for example because an object it needs exists and is not Vesper's; the message gives the error, and the operator retries |
+| | False `Expired` | the ttl has passed |
+
+The reasons are constants of the API (`api/v1alpha1`). Conflicts between two
+writers are not reported as `ReconcileError`: the operator retries, and they
+resolve.
+
+The **events**, attached to the preview, tell its history. The operator
+records one when the `Ready` condition changes, with its reason (`Warning`
+when the phase is `Failed`), and `NamespaceCreated` and `Deleting` when it
+creates and deletes the namespace. Events are written through the
+`events.k8s.io` API; the cluster keeps them for an hour by default.
+
+A wrong image or a crashing container is reported after 10 minutes only, by
+`RolloutStuck`: reading the pods to report it at once is #107.
 
 ### Resource limits
 
@@ -153,9 +186,8 @@ quantity, is not positive, if a request is more than its limit, or a limit
 more than its quota.
 
 When the quota is reached, the API server rejects the new pods: the preview
-stays `Pending` with fewer replicas available than requested, and the reason
-is in the events of the ReplicaSet (`kubectl get events -n <preview
-namespace>`). Pods that run when the operator is upgraded keep no limits
+becomes `Failed` with the reason `PodsRejected` and the message of the quota,
+and goes back to `Ready` once the pods fit. Pods that run when the operator is upgraded keep no limits
 until their next rollout: a quota does not evict pods it already admitted.
 
 ### Network isolation

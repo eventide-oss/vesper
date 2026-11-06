@@ -76,8 +76,10 @@ Works today:
   configurable by operator flags) and a NetworkPolicy that keeps it apart from
   other previews and from the rest of the cluster: a Deployment of its image,
   port, environment and replicas, behind a Service that gives it a stable
-  address inside the cluster. The preview becomes `Ready` when every replica runs. Images must run as a
-  non-root user.
+  address inside the cluster. Images must run as a non-root user.
+- `kubectl describe pe` tells what happens to a preview: its phase, the
+  conditions `Ready`, `Available` and `Expired` with a reason (for example
+  `PodsRejected` when its quota is full), and events for each change.
 - With a preview domain configured, each preview gets a public address, such
   as `http://pr-42-team-a-3f9c2a1b.preview.example.com`, through an Ingress
   served by the ingress controller of the cluster (Traefik, HAProxy...), and
