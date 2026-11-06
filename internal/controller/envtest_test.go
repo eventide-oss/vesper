@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -491,4 +492,25 @@ func TestEnvtestRejectsPrivilegedPod(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), `violates PodSecurity "restricted`) {
 		t.Errorf("create privileged pod: %v, want a rejection by Pod Security", err)
 	}
+}
+
+// TestEnvtestRecordsEvents checks that the events of a preview reach the API
+// server, attached to the preview, where kubectl describe finds them.
+func TestEnvtestRecordsEvents(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+
+	eventually(t, func() error {
+		var list eventsv1.EventList
+		if err := envClient.List(context.Background(), &list, client.InNamespace(p.namespace)); err != nil {
+			return err
+		}
+		for _, e := range list.Items {
+			if e.Regarding.Name == p.name && e.Reason == EventNamespaceCreated &&
+				e.Note == "created namespace "+p.previewNamespace {
+				return nil
+			}
+		}
+		return fmt.Errorf("no NamespaceCreated event for the preview in %d events", len(list.Items))
+	})
 }

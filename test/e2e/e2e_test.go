@@ -16,6 +16,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	eventsv1 "k8s.io/api/events/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -109,6 +110,7 @@ func TestPreviewLifecycle(t *testing.T) {
 	}
 
 	waitForReady(t, c, preview)
+	checkConditionsAndEvents(t, c, preview)
 
 	var d appsv1.Deployment
 	key := types.NamespacedName{Namespace: previewNamespace, Name: controller.DeploymentName}
@@ -194,6 +196,38 @@ func TestPreviewLifecycle(t *testing.T) {
 			return fmt.Errorf("get preview: %v, want NotFound", err)
 		}
 		return nil
+	})
+}
+
+// checkConditionsAndEvents checks what kubectl describe shows of a Ready
+// preview: the Available and Expired conditions, and the event of its
+// readiness, which the operator records with its own permissions.
+func checkConditionsAndEvents(t *testing.T, c client.Client, preview *vesperv1alpha1.PreviewEnvironment) {
+	t.Helper()
+	ctx := context.Background()
+	var p vesperv1alpha1.PreviewEnvironment
+	if err := c.Get(ctx, client.ObjectKeyFromObject(preview), &p); err != nil {
+		t.Fatalf("get preview: %v", err)
+	}
+	for typ, want := range map[string]metav1.ConditionStatus{
+		vesperv1alpha1.ConditionAvailable: metav1.ConditionTrue,
+		vesperv1alpha1.ConditionExpired:   metav1.ConditionFalse,
+	} {
+		if got := meta.FindStatusCondition(p.Status.Conditions, typ); got == nil || got.Status != want {
+			t.Errorf("%s condition = %+v, want %s", typ, got, want)
+		}
+	}
+	eventually(t, readyTimeout, func() error {
+		var list eventsv1.EventList
+		if err := c.List(ctx, &list, client.InNamespace(preview.Namespace)); err != nil {
+			return err
+		}
+		for _, e := range list.Items {
+			if e.Regarding.Name == preview.Name && e.Reason == vesperv1alpha1.ReasonDeploymentAvailable {
+				return nil
+			}
+		}
+		return fmt.Errorf("no %s event for the preview", vesperv1alpha1.ReasonDeploymentAvailable)
 	})
 }
 

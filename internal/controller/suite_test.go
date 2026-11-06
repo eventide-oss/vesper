@@ -100,7 +100,9 @@ func startEnvtest() (stop func() error, err error) {
 	if err != nil {
 		return stopEnv(fmt.Errorf("create manager: %w", err))
 	}
-	r := &PreviewEnvironmentReconciler{Client: mgr.GetClient(), Scheme: scheme, PreviewDomain: envtestDomain}
+	r := &PreviewEnvironmentReconciler{
+		Client: mgr.GetClient(), Scheme: scheme, PreviewDomain: envtestDomain, Recorder: mgr.GetEventRecorder("vesper"),
+	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return stopEnv(fmt.Errorf("set up controller: %w", err))
 	}
