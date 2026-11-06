@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,9 +49,12 @@ const labelPodSecurity = "pod-security.kubernetes.io/enforce"
 type PreviewEnvironmentReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// Clock tells the time to compare with the expiry of a preview. Nil means
+	// the real clock; tests set a fake one.
+	Clock clock.PassiveClock
 }
 
-// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch
+// +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch;delete
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=get;patch
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;delete
@@ -74,6 +79,16 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		return ctrl.Result{}, err
 	}
 
+	// Checked before anything is created: an expired preview is only deleted.
+	expiry := expiresAt(&preview)
+	now := r.clock().Now()
+	if !now.Before(expiry) {
+		return ctrl.Result{}, r.expire(ctx, &preview, expiry)
+	}
+	// Come back when the ttl passes, rather than polling (ADR-0004). A change
+	// of spec.ttl reconciles the preview again and computes a new delay.
+	result := ctrl.Result{RequeueAfter: expiry.Sub(now)}
+
 	name := NamespaceName(preview.Namespace, preview.Name)
 	owned, err := r.ensureNamespace(ctx, &preview, name)
 	if err != nil {
@@ -82,9 +97,13 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if !owned {
 		log.Info("namespace exists and was not created by Vesper for this preview: leaving it untouched",
 			"previewNamespace", name)
-		return ctrl.Result{}, r.setStatus(ctx, &preview, "", vesperv1alpha1.PhaseFailed, metav1.ConditionFalse,
-			vesperv1alpha1.ReasonNamespaceConflict,
-			fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name))
+		return result, r.setStatus(ctx, &preview, statusUpdate{
+			expiresAt: expiry,
+			phase:     vesperv1alpha1.PhaseFailed,
+			ready:     metav1.ConditionFalse,
+			reason:    vesperv1alpha1.ReasonNamespaceConflict,
+			message:   fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name),
+		})
 	}
 
 	deployment, err := r.ensureDeployment(ctx, &preview, name)
@@ -97,13 +116,20 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	address := internalURL(name)
 	// The Deployment's status changes as its pods start: its watch brings the
 	// preview back here, and the status follows.
-	available, message := deploymentAvailable(deployment)
-	if available {
-		return ctrl.Result{}, r.setStatus(ctx, &preview, address, vesperv1alpha1.PhaseReady, metav1.ConditionTrue,
-			vesperv1alpha1.ReasonDeploymentAvailable, message)
+	update := statusUpdate{
+		internalURL: address,
+		expiresAt:   expiry,
+		phase:       vesperv1alpha1.PhasePending,
+		ready:       metav1.ConditionFalse,
+		reason:      vesperv1alpha1.ReasonProvisioning,
 	}
-	return ctrl.Result{}, r.setStatus(ctx, &preview, address, vesperv1alpha1.PhasePending, metav1.ConditionFalse,
-		vesperv1alpha1.ReasonProvisioning, message)
+	available, message := deploymentAvailable(deployment)
+	update.message = message
+	if available {
+		update.phase, update.ready, update.reason =
+			vesperv1alpha1.PhaseReady, metav1.ConditionTrue, vesperv1alpha1.ReasonDeploymentAvailable
+	}
+	return result, r.setStatus(ctx, &preview, update)
 }
 
 // ensureNamespace creates the namespace of the preview if it does not exist.
@@ -138,22 +164,32 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	return true, nil
 }
 
-// setStatus writes the internal URL, the phase and the Ready condition. It
-// does not write when nothing changed, so a status update does not cause
-// another one.
+// statusUpdate is what a reconciliation writes to the status of a preview.
+type statusUpdate struct {
+	internalURL string
+	expiresAt   time.Time
+	phase       vesperv1alpha1.Phase
+	// ready, reason and message make the Ready condition.
+	ready           metav1.ConditionStatus
+	reason, message string
+}
+
+// setStatus writes the internal URL, the expiry, the phase and the Ready
+// condition. It does not write when nothing changed, so a status update does
+// not cause another one.
 func (r *PreviewEnvironmentReconciler) setStatus(
-	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, internalURL string,
-	phase vesperv1alpha1.Phase, ready metav1.ConditionStatus, reason, message string,
+	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, u statusUpdate,
 ) error {
 	before := preview.DeepCopy()
-	preview.Status.InternalURL = internalURL
-	preview.Status.Phase = phase
+	preview.Status.InternalURL = u.internalURL
+	preview.Status.ExpiresAt = &metav1.Time{Time: u.expiresAt}
+	preview.Status.Phase = u.phase
 	preview.Status.ObservedGeneration = preview.Generation
 	meta.SetStatusCondition(&preview.Status.Conditions, metav1.Condition{
 		Type:               vesperv1alpha1.ConditionReady,
-		Status:             ready,
-		Reason:             reason,
-		Message:            message,
+		Status:             u.ready,
+		Reason:             u.reason,
+		Message:            u.message,
 		ObservedGeneration: preview.Generation,
 	})
 	if equality.Semantic.DeepEqual(before.Status, preview.Status) {

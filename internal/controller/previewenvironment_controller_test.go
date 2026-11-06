@@ -5,6 +5,7 @@ import (
 	"maps"
 	"reflect"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -13,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	clocktesting "k8s.io/utils/clock/testing"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -35,13 +37,23 @@ func newReconciler(t *testing.T, objs ...client.Object) *PreviewEnvironmentRecon
 		WithObjects(objs...).
 		WithStatusSubresource(&vesperv1alpha1.PreviewEnvironment{}).
 		Build()
-	return &PreviewEnvironmentReconciler{Client: c, Scheme: scheme}
+	return &PreviewEnvironmentReconciler{Client: c, Scheme: scheme, Clock: clocktesting.NewFakePassiveClock(testNow)}
 }
+
+// testNow is the time of the fake clock of newReconciler: one hour after the
+// creation of newPreview, well before it expires.
+var (
+	testCreation = time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	testNow      = testCreation.Add(time.Hour)
+)
 
 func newPreview() *vesperv1alpha1.PreviewEnvironment {
 	return &vesperv1alpha1.PreviewEnvironment{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "pr-42", Generation: 1},
-		Spec:       vesperv1alpha1.PreviewEnvironmentSpec{Image: "ghcr.io/acme/app:pr-42"},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "team-a", Name: "pr-42", Generation: 1,
+			CreationTimestamp: metav1.NewTime(testCreation),
+		},
+		Spec: vesperv1alpha1.PreviewEnvironmentSpec{Image: "ghcr.io/acme/app:pr-42"},
 	}
 }
 

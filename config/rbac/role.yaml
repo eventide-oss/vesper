@@ -39,6 +39,7 @@ rules:
   resources:
   - previewenvironments
   verbs:
+  - delete
   - get
   - list
   - patch
