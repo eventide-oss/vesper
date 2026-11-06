@@ -1,8 +1,9 @@
 # vesperctl reference
 
-`vesperctl` reads the preview environments that Vesper manages in a
-Kubernetes cluster. It uses your kubeconfig, like kubectl, and only needs
-read access to `previewenvironments.vesper.eventide.dev`.
+`vesperctl` reads and creates the preview environments that Vesper manages
+in a Kubernetes cluster. It uses your kubeconfig, like kubectl. Reading needs
+`get` and `list` on `previewenvironments.vesper.eventide.dev`, creating
+needs `create`.
 
 Build it with `make build`; the binary is `bin/vesperctl`.
 
@@ -71,6 +72,41 @@ Conditions:
 `<none>` marks a value that is not set yet. Environment variables may hold
 secrets: only their number is shown, in every output format.
 
+### `vesperctl create <name> --image <image>`
+
+Create a preview environment in the namespace. The operator then runs its
+image; follow it with `vesperctl get`.
+
+| Flag | Meaning |
+| --- | --- |
+| `--image <image>` | container image to run, pinned with a tag other than `latest` or with a digest (required) |
+| `--port <port>` | port the application listens on; default `8080` |
+| `--replicas <n>` | number of pods; default `1` |
+| `--ttl <duration>` | time to live from the creation, such as `2h` or `90m`; default `24h` |
+| `--env KEY=VALUE` | environment variable of the application; repeat it for several |
+| `--dry-run` | print the preview environment as YAML instead of creating it |
+
+```text
+$ vesperctl create pr-42 -n team-a --image ghcr.io/acme/app:pr-42 --ttl 48h
+preview environment "pr-42" created in namespace "team-a"
+Follow it with: vesperctl get pr-42 -n team-a
+```
+
+Flags that are not given are left out, and the API server applies its
+defaults. vesperctl checks the form of the flags (a number, a duration,
+`KEY=VALUE`); the API server checks the values, with the rules of the CRD
+(port, replicas, ttl between 1m and 168h, image), and vesperctl prints its
+answer:
+
+```text
+$ vesperctl create pr-42 --image ghcr.io/acme/app:latest --ttl 30s
+vesperctl: the API server rejected the preview environment: spec.image: Invalid value: "ghcr.io/acme/app:latest": image must be pinned with a tag other than latest, or with a digest; spec.ttl: Invalid value: "30s": ttl must be a duration such as 24h or 90m, between 1m and 168h
+```
+
+`--dry-run` sends nothing to the cluster: the output can be saved and
+applied later, for example with `kubectl apply -f`. The values are only
+checked when it is applied.
+
 ### `vesperctl completion bash|zsh|fish`
 
 Print a shell completion script. It completes commands, flags, the values of
@@ -129,9 +165,10 @@ vesperctl list -A -o json | jq -r '.items[] | select(.phase == "Ready") | .url'
 | --- | --- | --- |
 | `0` | success | the command did what was asked, including an empty `list` |
 | `1` | the command was valid but failed | preview not found, permission denied, cluster unreachable, no kubeconfig, Vesper not installed |
-| `2` | the command line is wrong | unknown command or flag, missing or invalid name, unknown output format or shell |
+| `2` | the command line is wrong | unknown command or flag, missing or invalid name, unknown output format or shell, a flag that is not a number or a duration, a value the API server rejects |
 
-A usage error (`2`) also prints the usage of the command.
+A usage error (`2`) also prints the usage of the command, except when the API
+server rejected a value.
 
 ## Error messages
 
@@ -143,6 +180,9 @@ what to do next when vesperctl can tell:
 | no kubeconfig | `no kubeconfig found: set --kubeconfig or the KUBECONFIG environment variable` |
 | Vesper not installed | `the PreviewEnvironment API (...) is not installed in this cluster: install Vesper, or check --context` |
 | preview not found | `preview environment "pr-1" not found in namespace "team-a"` |
+| preview already exists (`create`) | `preview environment "pr-1" already exists in namespace "team-a": delete it first, or choose another name` |
+| namespace not found (`create`) | `namespace "team-a" not found: create it, or choose another with --namespace` |
+| value rejected by the API server (`create`) | `the API server rejected the preview environment: <field>: <reason>; ...` |
 | 403 from the API server | `you are not allowed to list preview environments in namespace "team-a": ask a cluster admin for access (RBAC)` |
 | 401 from the API server | `the API server rejected your credentials: check your kubeconfig, or log in again` |
 | no response (refused, timeout, TLS) | `cannot reach the API server at https://...:6443 (check --context and your network): <cause>` |

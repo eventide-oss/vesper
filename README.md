@@ -87,9 +87,10 @@ Works today:
 - Previews expire: when its `ttl` has passed (1 minute to 7 days, 24 hours by
   default), a preview is deleted, and deleting a preview deletes its namespace
   and everything in it. Raise the `ttl` to extend it.
-- `vesperctl list` and `vesperctl get`: read preview environments, as a table
-  or as JSON or YAML, with clear error messages and documented exit codes. See
-  the [vesperctl reference](docs/cli.md).
+- `vesperctl create` creates a preview environment from flags (or prints it as
+  YAML with `--dry-run`); `vesperctl list` and `vesperctl get` read them, as a
+  table or as JSON or YAML, with clear error messages and documented exit
+  codes. See the [vesperctl reference](docs/cli.md).
 - Shell completion for bash, zsh and fish.
 - Integration tests of the CLI against a kind cluster.
 
@@ -97,7 +98,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| HTTPS, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| HTTPS, metrics, `vesperctl extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
