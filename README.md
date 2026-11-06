@@ -72,8 +72,9 @@ Works today:
   other than `latest` or with a digest) and a status that only the operator can
   write. `kubectl get pe` shows the phase, the URL and the expiry.
 - The operator runs each preview in its own namespace, with the restricted Pod
-  Security profile: a Deployment of its image, port, environment and replicas,
-  behind a Service that gives it a stable address inside the cluster. The
+  Security profile and bounded resources (a LimitRange and a ResourceQuota,
+  configurable by operator flags): a Deployment of its image, port,
+  environment and replicas, behind a Service that gives it a stable address inside the cluster. The
   preview becomes `Ready` when every replica runs. Images must run as a
   non-root user.
 - With a preview domain configured, each preview gets a public address, such
@@ -93,7 +94,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| HTTPS, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| HTTPS, network policies, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 

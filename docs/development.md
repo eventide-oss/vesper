@@ -80,7 +80,10 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
 2. labels it with the preview labels (see
    [How Vesper tracks preview objects](#how-vesper-tracks-preview-objects))
    and with `pod-security.kubernetes.io/enforce=restricted`;
-3. creates or updates a Deployment named `app` in it (`deployment.go`): the
+3. bounds its resources with a LimitRange and a ResourceQuota named
+   `preview` (`quota.go`, see [Resource limits](#resource-limits)), before
+   any pod exists;
+4. creates or updates a Deployment named `app` in it (`deployment.go`): the
    image, the port (named `http`), the environment variables and the replicas
    of the spec. Its pods run with the restricted Pod Security settings:
    `runAsNonRoot`, no privilege escalation, all capabilities dropped, the
@@ -88,16 +91,16 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    must run as a non-root user**: an image that runs as root, such as the
    official `nginx`, stays in `CreateContainerConfigError`
    (`nginxinc/nginx-unprivileged` works);
-4. creates or updates a ClusterIP Service named `app` in front of the pods
+5. creates or updates a ClusterIP Service named `app` in front of the pods
    (`service.go`): port 80, which targets the container port by its name
    (`http`), so the Service stays the same when `spec.port` changes. Its
    address, `http://app.<preview namespace>.svc.cluster.local`, is written to
    `status.internalURL` (`kubectl get pe -o wide`). It is reachable from inside
    the cluster only;
-5. with a preview domain, creates or updates an Ingress named `app`
+6. with a preview domain, creates or updates an Ingress named `app`
    (`ingress.go`) that routes the host of the preview to the Service, and
    writes its URL to `status.url` (see [Public address](#public-address));
-6. sets the phase to `Ready`, with the `Ready` condition `True`
+7. sets the phase to `Ready`, with the `Ready` condition `True`
    (`DeploymentAvailable`), when every replica runs the requested image, and
    to `Pending` (`Provisioning`, for example "0/2 replicas available") until
    then.
@@ -108,13 +111,48 @@ reconciliation that changes nothing writes nothing.
 
 If a namespace of that name exists without the labels of that preview, the
 operator does not touch it: the phase becomes `Failed` with the reason
-`NamespaceConflict`. A namespace, a Deployment or a Service deleted or changed
-by hand is restored. To reach a preview from your machine without a public
+`NamespaceConflict`. A namespace, or an object in it, deleted or changed by
+hand is restored. To reach a preview from your machine without a public
 address:
 
 ```sh
 kubectl port-forward -n <preview namespace> svc/app 8080:80
 ```
+
+### Resource limits
+
+A preview runs code from a pull request, so it must not be able to use the
+whole cluster. Two objects in its namespace bound it, both named `preview`.
+The API server applies them when a pod is created (they are admission
+checks), so the operator creates them before the Deployment:
+
+- **A LimitRange** gives each container that sets no requests or limits
+  default ones. Vesper sets none on the container of a preview, so its pods
+  get these values: the Deployment stays as Vesper wrote it.
+- **A ResourceQuota** bounds the whole namespace: the sum of the limits of its
+  pods, and their number. It also forbids NodePort and LoadBalancer Services,
+  so that a preview is reached through its Ingress only. A quota on limits
+  rejects any pod without limits, which is why the LimitRange comes first.
+
+| Bound | Default | Operator flag |
+| --- | --- | --- |
+| CPU and memory reserved per container (requests) | `100m`, `128Mi` | `--default-cpu-request`, `--default-memory-request` |
+| Most CPU and memory per container (limits) | `500m`, `512Mi` | `--default-cpu-limit`, `--default-memory-limit` |
+| Sum of the limits of the pods of a preview | `4` CPU, `4Gi` | `--quota-cpu`, `--quota-memory` |
+| Pods of a preview | `10` | `--quota-pods` |
+
+The quota fits the largest preview, 5 replicas, during a rolling update:
+the Deployment then runs up to 7 pods (`maxSurge` of 25%, rounded up), that
+is 3.5 CPU and 3.5Gi of limits. If you raise the limits per container, raise
+the quota too. The operator refuses to start if a value is not a valid
+quantity, is not positive, if a request is more than its limit, or a limit
+more than its quota.
+
+When the quota is reached, the API server rejects the new pods: the preview
+stays `Pending` with fewer replicas available than requested, and the reason
+is in the events of the ReplicaSet (`kubectl get events -n <preview
+namespace>`). Pods that run when the operator is upgraded keep no limits
+until their next rollout: a quota does not evict pods it already admitted.
 
 ### Public address
 
