@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	vesperv1alpha1 "github.com/eventide-oss/vesper/api/v1alpha1"
 )
@@ -312,5 +313,40 @@ func TestEnvtestAPIValidation(t *testing.T) {
 				t.Errorf("error %q does not name %q", err, tt.message)
 			}
 		})
+	}
+}
+
+// TestEnvtestDeletionWaitsForNamespace deletes a preview: the controller
+// deletes its namespace and keeps the preview until the namespace is gone.
+// envtest has no namespace controller, so the namespace stays Terminating and
+// the preview must stay with its finalizer; the e2e test covers the end.
+func TestEnvtestDeletionWaitsForNamespace(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+	preview := p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	if !controllerutil.ContainsFinalizer(preview, FinalizerName) {
+		t.Fatalf("finalizers = %v, want %s", preview.Finalizers, FinalizerName)
+	}
+
+	if err := envClient.Delete(context.Background(), preview); err != nil {
+		t.Fatalf("delete preview: %v", err)
+	}
+	eventually(t, func() error {
+		var ns corev1.Namespace
+		if err := envClient.Get(context.Background(), types.NamespacedName{Name: p.previewNamespace}, &ns); err != nil {
+			return err
+		}
+		if ns.DeletionTimestamp.IsZero() {
+			return errors.New("preview namespace not deleted yet")
+		}
+		return nil
+	})
+
+	var got vesperv1alpha1.PreviewEnvironment
+	if err := p.get(&got); err != nil {
+		t.Fatalf("get preview: %v, want it kept while its namespace terminates", err)
+	}
+	if got.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(&got, FinalizerName) {
+		t.Errorf("preview = %+v, want it being deleted, with its finalizer", got.ObjectMeta)
 	}
 }
