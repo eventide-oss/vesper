@@ -168,14 +168,14 @@ func TestPreviewOfNamespace(t *testing.T) {
 	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{
 		LabelManagedBy: ManagedByVesper, LabelPreviewNamespace: "team-a", LabelPreviewName: "pr-42",
 	}}}
-	got := previewOfNamespace(context.Background(), ns)
+	got := previewOfObject(context.Background(), ns)
 	want := []ctrl.Request{{NamespacedName: types.NamespacedName{Namespace: "team-a", Name: "pr-42"}}}
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("previewOfNamespace = %v, want %v", got, want)
+		t.Errorf("previewOfObject = %v, want %v", got, want)
 	}
 
 	ns.Labels = map[string]string{LabelManagedBy: ManagedByVesper}
-	if got := previewOfNamespace(context.Background(), ns); got != nil {
-		t.Errorf("previewOfNamespace without preview labels = %v, want nil", got)
+	if got := previewOfObject(context.Background(), ns); got != nil {
+		t.Errorf("previewOfObject without preview labels = %v, want nil", got)
 	}
 }
