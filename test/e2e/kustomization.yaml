@@ -1,0 +1,11 @@
+# Deploys the operator as config/default does, with the image built by
+# hack/test-e2e.sh and loaded into the kind cluster. Kept apart so that the e2e
+# test never edits config/manager/kustomization.yaml, as `make deploy` does.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../config/default
+images:
+  - name: controller
+    newName: vesper-manager
+    newTag: e2e

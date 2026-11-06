@@ -54,6 +54,12 @@ test: setup-envtest ## Run the unit and controller (envtest) tests.
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 		go test -race ./...
 
+# Builds the operator image, deploys it in a fresh kind cluster (vesper-e2e, deleted at
+# the end) and checks that a preview becomes Ready. Needs Docker and kind.
+.PHONY: test-e2e
+test-e2e: kustomize ## Run the operator end-to-end test in a fresh kind cluster.
+	KUSTOMIZE="$(KUSTOMIZE)" hack/test-e2e.sh
+
 # Runs vesperctl against the kind cluster (created if missing) with the generated CRD.
 # -count=1 disables the test cache: the result depends on the cluster.
 .PHONY: test-integration
