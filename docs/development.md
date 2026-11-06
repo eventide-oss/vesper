@@ -79,7 +79,9 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    namespace. The same preview always gets the same name;
 2. labels it with the preview labels (see
    [How Vesper tracks preview objects](#how-vesper-tracks-preview-objects))
-   and with `pod-security.kubernetes.io/enforce=restricted`;
+   and with `pod-security.kubernetes.io/enforce=restricted`, so that the API
+   server rejects privileged or root pods in it. Labels changed by hand are
+   put back;
 3. bounds its resources with a LimitRange and a ResourceQuota named
    `preview` (`quota.go`, see [Resource limits](#resource-limits)), and
    isolates it on the network with a NetworkPolicy named `preview`
@@ -181,6 +183,33 @@ sensitive workloads on the strength of this policy alone.
 `make test-e2e` checks the isolation on kind: from the namespace of the test,
 and from the preview itself, the preview answers; from a namespace labelled
 like a preview it does not, and the preview cannot reach the API server.
+
+### Operator permissions
+
+The operator runs with the ServiceAccount `vesper-controller-manager`. Its
+ClusterRole, `config/rbac/role.yaml`, is generated from the
+`+kubebuilder:rbac` markers in `internal/controller` and lists only what the
+code uses:
+
+| Resource | Verbs | Why |
+| --- | --- | --- |
+| `previewenvironments` | get, list, watch, patch, delete | read the previews, add and remove the finalizer, delete an expired preview |
+| `previewenvironments/status` | patch | write the status |
+| `namespaces` | get, list, watch, create, patch, delete | create the namespace of a preview, put its labels back, delete it |
+| `deployments`, `services`, `limitranges`, `resourcequotas`, `networkpolicies` | get, list, watch, create, update | create the objects of a preview and restore them |
+| `ingresses` | get, list, watch, create, update, delete | the same, and delete the Ingress when the preview domain is removed |
+
+The Role `leader-election-role` (`config/rbac/leader_election_role.yaml`), in
+`vesper-system` only, allows `get`, `create` and `update` on `leases`, and
+`create` and `patch` on `events`: when several replicas run, the one that
+holds the Lease works and the others wait. The operator cannot read Secrets
+or ConfigMaps, nor create pods.
+
+These rights are cluster-wide: RBAC cannot limit them to the namespaces of
+previews. The code protects the rest of the cluster instead: it modifies or
+deletes an object only if it carries the labels of the preview, and deletes
+with a precondition on its UID. The namespace `vesper-system` enforces the
+restricted Pod Security Standard too.
 
 ### Public address
 
