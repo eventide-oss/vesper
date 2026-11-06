@@ -18,8 +18,10 @@ package main
 
 import (
 	"crypto/tls"
+	"errors"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -27,6 +29,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -63,6 +66,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var previewDomain, ingressClass string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -82,6 +86,12 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&previewDomain, "preview-domain", "",
+		"Base domain of the public addresses of previews, for example preview.example.com: each preview gets an "+
+			"Ingress for <name>-<namespace>-<hash>.<domain>. A wildcard DNS record must point it to the ingress "+
+			"controller. Empty: previews have no public address.")
+	flag.StringVar(&ingressClass, "ingress-class", "",
+		"Ingress class of the Ingresses of previews. Empty: the default class of the cluster.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -89,6 +99,19 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if previewDomain != "" {
+		if err := controller.ValidatePreviewDomain(previewDomain); err != nil {
+			setupLog.Error(err, "Invalid --preview-domain")
+			os.Exit(1)
+		}
+	}
+	if ingressClass != "" {
+		if errs := validation.IsDNS1123Subdomain(ingressClass); len(errs) > 0 {
+			setupLog.Error(errors.New(strings.Join(errs, "; ")), "Invalid --ingress-class", "ingressClass", ingressClass)
+			os.Exit(1)
+		}
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -183,8 +206,10 @@ func main() {
 	}
 
 	if err := (&controller.PreviewEnvironmentReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		PreviewDomain:    previewDomain,
+		IngressClassName: ingressClass,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "previewenvironment")
 		os.Exit(1)

@@ -23,6 +23,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -52,6 +53,13 @@ type PreviewEnvironmentReconciler struct {
 	// Clock tells the time to compare with the expiry of a preview. Nil means
 	// the real clock; tests set a fake one.
 	Clock clock.PassiveClock
+	// PreviewDomain is the base domain of the public addresses of previews,
+	// for example preview.example.com. Empty means no public address: no
+	// Ingress is created.
+	PreviewDomain string
+	// IngressClassName selects the ingress controller that serves the
+	// Ingresses. Empty means the default class of the cluster.
+	IngressClassName string
 }
 
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch;delete
@@ -60,6 +68,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
@@ -113,10 +122,15 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	if err := r.ensureService(ctx, &preview, name); err != nil {
 		return ctrl.Result{}, err
 	}
+	url, err := r.ensureIngress(ctx, &preview, name)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	address := internalURL(name)
 	// The Deployment's status changes as its pods start: its watch brings the
 	// preview back here, and the status follows.
 	update := statusUpdate{
+		url:         url,
 		internalURL: address,
 		expiresAt:   expiry,
 		phase:       vesperv1alpha1.PhasePending,
@@ -166,6 +180,7 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 
 // statusUpdate is what a reconciliation writes to the status of a preview.
 type statusUpdate struct {
+	url         string
 	internalURL string
 	expiresAt   time.Time
 	phase       vesperv1alpha1.Phase
@@ -174,13 +189,13 @@ type statusUpdate struct {
 	reason, message string
 }
 
-// setStatus writes the internal URL, the expiry, the phase and the Ready
-// condition. It does not write when nothing changed, so a status update does
+// setStatus writes the URLs, the expiry, the phase and the Ready condition. It does not write when nothing changed, so a status update does
 // not cause another one.
 func (r *PreviewEnvironmentReconciler) setStatus(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, u statusUpdate,
 ) error {
 	before := preview.DeepCopy()
+	preview.Status.URL = u.url
 	preview.Status.InternalURL = u.internalURL
 	preview.Status.ExpiresAt = &metav1.Time{Time: u.expiresAt}
 	preview.Status.Phase = u.phase
@@ -221,6 +236,9 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		Watches(&corev1.Service{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&networkingv1.Ingress{},
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		// The objects are tied to their preview by labels, not owner

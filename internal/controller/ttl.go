@@ -50,6 +50,7 @@ func (r *PreviewEnvironmentReconciler) expire(
 ) error {
 	logf.FromContext(ctx).Info("ttl passed: deleting the preview", "expiresAt", expiry.UTC().Format(time.RFC3339))
 	err := r.setStatus(ctx, preview, statusUpdate{
+		url:         preview.Status.URL,
 		internalURL: preview.Status.InternalURL,
 		expiresAt:   expiry,
 		phase:       vesperv1alpha1.PhaseExpired,
