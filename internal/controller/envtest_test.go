@@ -411,3 +411,22 @@ func TestEnvtestCreatesIngress(t *testing.T) {
 		t.Errorf("rules = %+v, want one rule for %s", ing.Spec.Rules, host)
 	}
 }
+
+// TestEnvtestCreatesLimits checks that the API server accepts the LimitRange
+// and the ResourceQuota of a preview. envtest runs no quota controller, so it
+// cannot admit pods under a quota: the e2e test checks the pods.
+func TestEnvtestCreatesLimits(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+
+	var lr corev1.LimitRange
+	eventually(t, func() error { return p.getInPreviewNamespace(LimitsName, &lr) })
+	if len(lr.Spec.Limits) != 1 || lr.Spec.Limits[0].Default.Cpu().String() != "500m" {
+		t.Errorf("limitrange limits = %+v, want the default limit of 500m CPU", lr.Spec.Limits)
+	}
+	var q corev1.ResourceQuota
+	eventually(t, func() error { return p.getInPreviewNamespace(LimitsName, &q) })
+	if got := q.Spec.Hard.Pods().String(); got != "10" {
+		t.Errorf("resourcequota pods = %s, want 10", got)
+	}
+}

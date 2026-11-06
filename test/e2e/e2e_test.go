@@ -141,6 +141,14 @@ func TestPreviewLifecycle(t *testing.T) {
 	if sc := pod.Spec.SecurityContext; sc == nil || sc.RunAsNonRoot == nil || !*sc.RunAsNonRoot {
 		t.Errorf("pod securityContext = %+v, want runAsNonRoot", sc)
 	}
+	// Vesper sets no resources on the container: the LimitRange of the
+	// namespace gave it the defaults, and the quota admitted it.
+	want := controller.DefaultResources()
+	got := pod.Spec.Containers[0].Resources
+	if !got.Requests.Cpu().Equal(want.CPURequest) || !got.Requests.Memory().Equal(want.MemoryRequest) ||
+		!got.Limits.Cpu().Equal(want.CPULimit) || !got.Limits.Memory().Equal(want.MemoryLimit) {
+		t.Errorf("container resources = %+v, want the defaults of the LimitRange", got)
+	}
 
 	var s corev1.Service
 	if err := c.Get(ctx, types.NamespacedName{Namespace: previewNamespace, Name: controller.ServiceName}, &s); err != nil {

@@ -29,6 +29,8 @@ func TestReconcileTracksObjectsWithLabels(t *testing.T) {
 		"pod template": &d.Spec.Template.ObjectMeta,
 		"service":      getService(t, r),
 		"ingress":      ing,
+		"limitrange":   getLimitRange(t, r),
+		"quota":        getResourceQuota(t, r),
 	}
 	for kind, obj := range objects {
 		for k, v := range want {
