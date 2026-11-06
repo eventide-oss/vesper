@@ -12,18 +12,23 @@ import (
 // a preview: each one carries the preview labels, and none has an owner
 // reference, which cannot point from the preview namespace to the preview.
 func TestReconcileTracksObjectsWithLabels(t *testing.T) {
-	r := newReconciler(t, newPreview())
+	r := newIngressReconciler(t)
 	reconcileOnce(t, r)
 
 	want := map[string]string{
 		LabelManagedBy: ManagedByVesper, LabelPreviewNamespace: "team-a", LabelPreviewName: "pr-42",
 	}
 	d := getDeployment(t, r)
+	ing, err := getIngress(t, r)
+	if err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
 	objects := map[string]metav1.Object{
 		"namespace":    getNamespace(t, r, NamespaceName("team-a", "pr-42")),
 		"deployment":   d,
 		"pod template": &d.Spec.Template.ObjectMeta,
 		"service":      getService(t, r),
+		"ingress":      ing,
 	}
 	for kind, obj := range objects {
 		for k, v := range want {
