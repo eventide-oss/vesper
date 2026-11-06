@@ -81,7 +81,9 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    [How Vesper tracks preview objects](#how-vesper-tracks-preview-objects))
    and with `pod-security.kubernetes.io/enforce=restricted`;
 3. bounds its resources with a LimitRange and a ResourceQuota named
-   `preview` (`quota.go`, see [Resource limits](#resource-limits)), before
+   `preview` (`quota.go`, see [Resource limits](#resource-limits)), and
+   isolates it on the network with a NetworkPolicy named `preview`
+   (`networkpolicy.go`, see [Network isolation](#network-isolation)), before
    any pod exists;
 4. creates or updates a Deployment named `app` in it (`deployment.go`): the
    image, the port (named `http`), the environment variables and the replicas
@@ -154,6 +156,32 @@ is in the events of the ReplicaSet (`kubectl get events -n <preview
 namespace>`). Pods that run when the operator is upgraded keep no limits
 until their next rollout: a quota does not evict pods it already admitted.
 
+### Network isolation
+
+Each preview namespace has a NetworkPolicy named `preview` that denies all
+traffic to and from its pods, except
+([ADR-0005](adr/0005-network-isolation.md)):
+
+| Direction | Allowed |
+| --- | --- |
+| In | The port `http` of the application, from the pods of the preview and from any namespace that is not a preview (without `app.kubernetes.io/managed-by=vesper`), such as the one of the ingress controller |
+| Out | The pods of the preview, DNS (port 53), and the public internet: not the private (`10/8`, `172.16/12`, `192.168/16`, `fc00::/7`), link-local (`169.254/16`, `fe80::/10`) or shared (`100.64/10`) ranges |
+
+So a preview cannot call another preview, nor anything inside the cluster:
+other applications, the API server, the metadata service of the cloud. It can
+call external APIs. A preview that needs a service inside the cluster does not
+work today.
+
+**The CNI enforces the policy, not the API server.** kindnet (the CNI of
+recent kind releases), k3s, Calico and Cilium do; with a CNI that does not,
+such as flannel alone, the policy is accepted and ignored, and previews are not
+isolated. A namespace stays a soft boundary: do not run previews of untrusted code next to
+sensitive workloads on the strength of this policy alone.
+
+`make test-e2e` checks the isolation on kind: from the namespace of the test,
+and from the preview itself, the preview answers; from a namespace labelled
+like a preview it does not, and the preview cannot reach the API server.
+
 ### Public address
 
 A preview gets a public address when the operator runs with a preview domain:
@@ -187,8 +215,8 @@ resolve to 127.0.0.1: with an ingress controller in kind and
 port-forward to the controller.
 
 HTTPS is not supported yet (#100); Vesper uses an Ingress rather than the
-Gateway API, which may come later (#99). The NetworkPolicy of a preview
-(#42) will have to let the ingress controller in.
+Gateway API, which may come later (#99). The NetworkPolicy of a preview lets
+the ingress controller in (see [Network isolation](#network-isolation)).
 
 ### Preview lifetime (TTL)
 

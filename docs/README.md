@@ -9,6 +9,7 @@
   - [ADR-0002: Run each preview in a namespace of its own, tracked by labels](adr/0002-namespace-per-preview.md)
   - [ADR-0003: Make PreviewEnvironment a namespaced resource](adr/0003-namespaced-preview-environment.md)
   - [ADR-0004: Count the TTL of a preview from its creation](adr/0004-ttl-semantics.md)
+  - [ADR-0005: Isolate each preview on the network](adr/0005-network-isolation.md)
 - [Learning journal](journal/): notes after each work session, from
   [the template](journal/TEMPLATE.md).
 
