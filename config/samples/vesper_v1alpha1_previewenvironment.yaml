@@ -11,6 +11,7 @@ spec:
   # Optional fields, shown with their defaults.
   port: 8080
   replicas: 1
+  # Deleted 24h after its creation (1m to 168h). Raise it to extend the preview.
   ttl: 24h
   env:
     - name: LOG_LEVEL

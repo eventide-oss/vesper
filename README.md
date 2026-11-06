@@ -43,7 +43,7 @@ flowchart LR
     subgraph ns ["Namespace for pr-42"]
         deploy["Deployment and Pods"] --- svc["Service"] --- ingress["Ingress<br/>pr-42.preview.example.com"]
     end
-    op -.->|"deletes when the TTL expires"| ns
+    op -->|"deletes when the TTL expires"| ns
 
     classDef planned stroke-dasharray: 5 5
     class ingress planned
@@ -77,9 +77,11 @@ Works today:
 - The operator runs each preview in its own namespace, with the restricted Pod
   Security profile: a Deployment of its image, port, environment and replicas,
   behind a Service that gives it a stable address inside the cluster. The
-  preview becomes `Ready` when every replica runs. Deleting a preview deletes
-  its namespace and everything in it. Images must run as a
+  preview becomes `Ready` when every replica runs. Images must run as a
   non-root user.
+- Previews expire: when its `ttl` has passed (1 minute to 7 days, 24 hours by
+  default), a preview is deleted, and deleting a preview deletes its namespace
+  and everything in it. Raise the `ttl` to extend it.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
   the [vesperctl reference](docs/cli.md).
@@ -90,7 +92,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| Public address (Ingress), TTL expiry, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| Public address (Ingress), quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 

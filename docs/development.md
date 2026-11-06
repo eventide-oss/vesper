@@ -116,6 +116,33 @@ kubectl port-forward -n <preview namespace> svc/app 8080:80
 
 Not yet: a public address (P3).
 
+### Preview lifetime (TTL)
+
+A preview expires `spec.ttl` after its creation: `status.expiresAt` is
+`metadata.creationTimestamp + spec.ttl`, recomputed at every reconciliation
+(`ttl.go`, [ADR-0004](adr/0004-ttl-semantics.md)). The `Expires` column of
+`kubectl get pe` and `vesperctl get` show it.
+
+- The controller does not poll: each reconciliation returns
+  `RequeueAfter: expiresAt - now`, so controller-runtime reconciles the
+  preview again at its expiry.
+- When the ttl has passed, the controller sets the phase to `Expired`, with
+  the `Ready` condition `False` and the reason `Expired`, then deletes the
+  preview; the finalizer deletes its namespace (see below). An expired preview
+  creates nothing.
+- To extend a preview, raise its ttl; the total lifetime stays within 168h:
+
+  ```sh
+  kubectl patch pe <name> -n <namespace> --type=merge -p '{"spec":{"ttl":"48h"}}'
+  ```
+
+- If the operator is stopped at the expiry, the preview expires when it starts
+  again: late, never early.
+
+To watch an expiry, create a preview with `ttl: 1m`. The tests do not wait:
+the reconciler has a `Clock` field, and the unit tests set a fake clock
+(`k8s.io/utils/clock/testing`) and move it.
+
 ### Delete a preview
 
 Every preview carries the finalizer `vesper.eventide.dev/cleanup`, added
