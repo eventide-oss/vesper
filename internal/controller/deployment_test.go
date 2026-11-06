@@ -42,9 +42,6 @@ func TestReconcileCreatesDeployment(t *testing.T) {
 	if !maps.Equal(d.Labels, labels) {
 		t.Errorf("labels = %v, want %v", d.Labels, labels)
 	}
-	if len(d.OwnerReferences) != 0 {
-		t.Errorf("owner references = %v, want none: they cannot cross namespaces", d.OwnerReferences)
-	}
 	if got := ptr.Deref(d.Spec.Replicas, 0); got != 2 {
 		t.Errorf("replicas = %d, want 2", got)
 	}

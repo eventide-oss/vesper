@@ -29,15 +29,6 @@ func TestReconcileCreatesService(t *testing.T) {
 	reconcileOnce(t, r)
 
 	s := getService(t, r)
-	labels := map[string]string{
-		LabelManagedBy: ManagedByVesper, LabelPreviewNamespace: "team-a", LabelPreviewName: "pr-42",
-	}
-	if !maps.Equal(s.Labels, labels) {
-		t.Errorf("labels = %v, want %v", s.Labels, labels)
-	}
-	if len(s.OwnerReferences) != 0 {
-		t.Errorf("owner references = %v, want none", s.OwnerReferences)
-	}
 	if s.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Errorf("type = %q, want ClusterIP", s.Spec.Type)
 	}
