@@ -27,6 +27,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -92,6 +93,15 @@ func main() {
 			"controller. Empty: previews have no public address.")
 	flag.StringVar(&ingressClass, "ingress-class", "",
 		"Ingress class of the Ingresses of previews. Empty: the default class of the cluster.")
+	res := controller.DefaultResources()
+	quantityVar(&res.CPURequest, "default-cpu-request", "CPU reserved for each container of a preview.")
+	quantityVar(&res.MemoryRequest, "default-memory-request", "Memory reserved for each container of a preview.")
+	quantityVar(&res.CPULimit, "default-cpu-limit", "Most CPU each container of a preview may use.")
+	quantityVar(&res.MemoryLimit, "default-memory-limit", "Most memory each container of a preview may use.")
+	quantityVar(&res.QuotaCPU, "quota-cpu", "Most CPU all the pods of a preview may use together (sum of their limits).")
+	quantityVar(&res.QuotaMemory, "quota-memory",
+		"Most memory all the pods of a preview may use together (sum of their limits).")
+	flag.Int64Var(&res.QuotaPods, "quota-pods", res.QuotaPods, "Most pods a preview may run, rolling updates included.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -111,6 +121,11 @@ func main() {
 			setupLog.Error(errors.New(strings.Join(errs, "; ")), "Invalid --ingress-class", "ingressClass", ingressClass)
 			os.Exit(1)
 		}
+	}
+
+	if err := res.Validate(); err != nil {
+		setupLog.Error(err, "Invalid preview resources")
+		os.Exit(1)
 	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -210,6 +225,7 @@ func main() {
 		Scheme:           mgr.GetScheme(),
 		PreviewDomain:    previewDomain,
 		IngressClassName: ingressClass,
+		Resources:        &res,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "previewenvironment")
 		os.Exit(1)
@@ -230,4 +246,17 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// quantityVar defines a flag for a resource quantity, such as 500m or 512Mi,
+// with the current value of q as its default.
+func quantityVar(q *resource.Quantity, name, usage string) {
+	flag.Func(name, usage+" Default: "+q.String()+".", func(s string) error {
+		v, err := resource.ParseQuantity(s)
+		if err != nil {
+			return err
+		}
+		*q = v
+		return nil
+	})
 }

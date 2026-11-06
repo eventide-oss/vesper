@@ -60,6 +60,9 @@ type PreviewEnvironmentReconciler struct {
 	// IngressClassName selects the ingress controller that serves the
 	// Ingresses. Empty means the default class of the cluster.
 	IngressClassName string
+	// Resources bounds the resources of each preview. Nil means
+	// DefaultResources.
+	Resources *Resources
 }
 
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch;delete
@@ -69,6 +72,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups="",resources=limitranges;resourcequotas,verbs=get;list;watch;create;update
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
@@ -115,6 +119,9 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 		})
 	}
 
+	if err := r.ensureLimits(ctx, &preview, name); err != nil {
+		return ctrl.Result{}, err
+	}
 	deployment, err := r.ensureDeployment(ctx, &preview, name)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -239,6 +246,12 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		Watches(&networkingv1.Ingress{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&corev1.LimitRange{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&corev1.ResourceQuota{},
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		// The objects are tied to their preview by labels, not owner
