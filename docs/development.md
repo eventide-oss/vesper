@@ -190,8 +190,40 @@ storing the object. `make uninstall` removes the CRD and every
 ## Tests
 
 ```sh
-make test               # unit tests, no cluster needed
+make test               # unit and controller (envtest) tests, no cluster needed
 make test-integration   # vesperctl against the kind cluster (created if missing)
+```
+
+### Controller tests (envtest)
+
+The controller has two kinds of tests in `internal/controller`:
+
+- **Unit tests** call `Reconcile` directly against the fake client of
+  controller-runtime, an in-memory store. They are fast and cover the edge
+  cases, but the fake client does not validate the CRD schema, add server
+  defaults or run the watches.
+- **envtest tests** (`envtest_test.go`) start a real `kube-apiserver` and
+  `etcd` with the generated CRD, and run the controller in a real manager, as
+  in production. A test creates a preview and waits for the result with
+  `eventually` (retries every 100 ms, fails after 10 s), never with a fixed
+  sleep. `TestMain` in `suite_test.go` starts envtest once for the package.
+
+envtest runs no other controller. There is no Deployment controller, so no
+pod ever runs: a test writes the Deployment status itself to make a preview
+`Ready`. There is no namespace controller, so a deleted namespace stays
+`Terminating`: each test creates its own namespace (`team-<random>`) and
+never deletes it.
+
+`make test` downloads `setup-envtest` and the `kube-apiserver` and `etcd`
+binaries of Kubernetes `ENVTEST_K8S_VERSION` into `bin/`, and points the tests
+to them with `KUBEBUILDER_ASSETS`. A plain `go test ./...` skips the envtest
+tests; in CI (`CI` set), they fail instead of being skipped. To run them
+from your editor or with other flags:
+
+```sh
+make setup-envtest
+export KUBEBUILDER_ASSETS="$(bin/setup-envtest use 1.37.0 --bin-dir bin -p path)"
+go test -race -run Envtest -v ./internal/controller/
 ```
 
 ### Integration tests

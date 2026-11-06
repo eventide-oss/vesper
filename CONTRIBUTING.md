@@ -25,7 +25,7 @@ Docker, kind, kubectl) and for the local cluster (`make kind-up`).
 
 ```sh
 make build   # build vesperctl into bin/
-make test    # go test -race ./...
+make test    # go test -race ./..., with envtest
 make vet     # go vet ./...
 make lint    # golangci-lint run
 ```
