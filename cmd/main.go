@@ -226,6 +226,7 @@ func main() {
 		PreviewDomain:    previewDomain,
 		IngressClassName: ingressClass,
 		Resources:        &res,
+		Recorder:         mgr.GetEventRecorder("vesper"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "previewenvironment")
 		os.Exit(1)

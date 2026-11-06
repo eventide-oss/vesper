@@ -54,9 +54,8 @@ func (r *PreviewEnvironmentReconciler) expire(
 		internalURL: preview.Status.InternalURL,
 		expiresAt:   expiry,
 		phase:       vesperv1alpha1.PhaseExpired,
-		ready:       metav1.ConditionFalse,
-		reason:      vesperv1alpha1.ReasonExpired,
-		message:     "ttl passed at " + expiry.UTC().Format(time.RFC3339) + ": the preview is being deleted",
+		ready: condition{metav1.ConditionFalse, vesperv1alpha1.ReasonExpired,
+			"ttl passed at " + expiry.UTC().Format(time.RFC3339) + ": the preview is being deleted"},
 	})
 	if err != nil {
 		return err

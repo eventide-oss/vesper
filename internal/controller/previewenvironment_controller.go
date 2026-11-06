@@ -25,12 +25,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/utils/clock"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -61,6 +60,8 @@ type PreviewEnvironmentReconciler struct {
 	// IngressClassName selects the ingress controller that serves the
 	// Ingresses. Empty means the default class of the cluster.
 	IngressClassName string
+	// Recorder records the events of previews. Nil records none.
+	Recorder events.EventRecorder
 	// Resources bounds the resources of each preview. Nil means
 	// DefaultResources.
 	Resources *Resources
@@ -74,13 +75,12 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups="",resources=limitranges;resourcequotas,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
 // everything again and is safe to call any number of times.
 func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
 	var preview vesperv1alpha1.PreviewEnvironment
 	if err := r.Get(ctx, req.NamespacedName, &preview); err != nil {
 		// Not found: the preview was deleted, there is nothing to do.
@@ -103,58 +103,68 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	// of spec.ttl reconciles the preview again and computes a new delay.
 	result := ctrl.Result{RequeueAfter: expiry.Sub(now)}
 
-	name := NamespaceName(preview.Namespace, preview.Name)
-	owned, err := r.ensureNamespace(ctx, &preview, name)
+	update, err := r.ensureObjects(ctx, &preview, expiry)
 	if err != nil {
+		return ctrl.Result{}, r.reportError(ctx, &preview, expiry, err)
+	}
+	if err := r.setStatus(ctx, &preview, update); apierrors.IsConflict(err) {
+		// The cache had not seen the last status yet: come back once it has.
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	} else if err != nil {
 		return ctrl.Result{}, err
+	}
+	return result, nil
+}
+
+// ensureObjects creates or updates every object of the preview, in its
+// namespace, and returns the status that follows.
+func (r *PreviewEnvironmentReconciler) ensureObjects(
+	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time,
+) (statusUpdate, error) {
+	name := NamespaceName(preview.Namespace, preview.Name)
+	owned, err := r.ensureNamespace(ctx, preview, name)
+	if err != nil {
+		return statusUpdate{}, err
 	}
 	if !owned {
-		log.Info("namespace exists and was not created by Vesper for this preview: leaving it untouched",
+		logf.FromContext(ctx).Info(
+			"namespace exists and was not created by Vesper for this preview: leaving it untouched",
 			"previewNamespace", name)
-		return result, r.setStatus(ctx, &preview, statusUpdate{
-			expiresAt: expiry,
-			phase:     vesperv1alpha1.PhaseFailed,
-			ready:     metav1.ConditionFalse,
-			reason:    vesperv1alpha1.ReasonNamespaceConflict,
-			message:   fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name),
-		})
+		conflict := condition{metav1.ConditionFalse, vesperv1alpha1.ReasonNamespaceConflict,
+			fmt.Sprintf("namespace %s already exists and was not created by Vesper for this preview", name)}
+		return statusUpdate{
+			expiresAt: expiry, phase: vesperv1alpha1.PhaseFailed, ready: conflict, available: &conflict,
+		}, nil
 	}
 
-	if err := r.ensureLimits(ctx, &preview, name); err != nil {
-		return ctrl.Result{}, err
+	if err := r.ensureLimits(ctx, preview, name); err != nil {
+		return statusUpdate{}, err
 	}
-	if err := r.ensureNetworkPolicy(ctx, &preview, name); err != nil {
-		return ctrl.Result{}, err
+	if err := r.ensureNetworkPolicy(ctx, preview, name); err != nil {
+		return statusUpdate{}, err
 	}
-	deployment, err := r.ensureDeployment(ctx, &preview, name)
+	deployment, err := r.ensureDeployment(ctx, preview, name)
 	if err != nil {
-		return ctrl.Result{}, err
+		return statusUpdate{}, err
 	}
-	if err := r.ensureService(ctx, &preview, name); err != nil {
-		return ctrl.Result{}, err
+	if err := r.ensureService(ctx, preview, name); err != nil {
+		return statusUpdate{}, err
 	}
-	url, err := r.ensureIngress(ctx, &preview, name)
+	url, err := r.ensureIngress(ctx, preview, name)
 	if err != nil {
-		return ctrl.Result{}, err
+		return statusUpdate{}, err
 	}
-	address := internalURL(name)
 	// The Deployment's status changes as its pods start: its watch brings the
 	// preview back here, and the status follows.
-	update := statusUpdate{
+	available, phase := availableCondition(deployment)
+	return statusUpdate{
 		url:         url,
-		internalURL: address,
+		internalURL: internalURL(name),
 		expiresAt:   expiry,
-		phase:       vesperv1alpha1.PhasePending,
-		ready:       metav1.ConditionFalse,
-		reason:      vesperv1alpha1.ReasonProvisioning,
-	}
-	available, message := deploymentAvailable(deployment)
-	update.message = message
-	if available {
-		update.phase, update.ready, update.reason =
-			vesperv1alpha1.PhaseReady, metav1.ConditionTrue, vesperv1alpha1.ReasonDeploymentAvailable
-	}
-	return result, r.setStatus(ctx, &preview, update)
+		phase:       phase,
+		ready:       available,
+		available:   &available,
+	}, nil
 }
 
 // ensureNamespace creates the namespace of the preview if it does not exist,
@@ -187,6 +197,7 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 		return false, fmt.Errorf("create namespace %s: %w", name, err)
 	}
 	logf.FromContext(ctx).Info("created namespace", "previewNamespace", name)
+	r.event(preview, corev1.EventTypeNormal, EventNamespaceCreated, "CreateNamespace", "created namespace "+name)
 	return true, nil
 }
 
@@ -213,46 +224,6 @@ func (r *PreviewEnvironmentReconciler) restoreNamespaceLabels(
 		return fmt.Errorf("restore labels of namespace %s: %w", ns.Name, err)
 	}
 	logf.FromContext(ctx).Info("restored namespace labels", "previewNamespace", ns.Name)
-	return nil
-}
-
-// statusUpdate is what a reconciliation writes to the status of a preview.
-type statusUpdate struct {
-	url         string
-	internalURL string
-	expiresAt   time.Time
-	phase       vesperv1alpha1.Phase
-	// ready, reason and message make the Ready condition.
-	ready           metav1.ConditionStatus
-	reason, message string
-}
-
-// setStatus writes the URLs, the expiry, the phase and the Ready condition. It does not write when nothing changed, so a status update does
-// not cause another one.
-func (r *PreviewEnvironmentReconciler) setStatus(
-	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, u statusUpdate,
-) error {
-	before := preview.DeepCopy()
-	preview.Status.URL = u.url
-	preview.Status.InternalURL = u.internalURL
-	preview.Status.ExpiresAt = &metav1.Time{Time: u.expiresAt}
-	preview.Status.Phase = u.phase
-	preview.Status.ObservedGeneration = preview.Generation
-	meta.SetStatusCondition(&preview.Status.Conditions, metav1.Condition{
-		Type:               vesperv1alpha1.ConditionReady,
-		Status:             u.ready,
-		Reason:             u.reason,
-		Message:            u.message,
-		ObservedGeneration: preview.Generation,
-	})
-	if equality.Semantic.DeepEqual(before.Status, preview.Status) {
-		return nil
-	}
-	// A merge patch of the status only: no conflict with spec changes, and
-	// fields the operator does not set are kept.
-	if err := r.Status().Patch(ctx, preview, client.MergeFrom(before)); err != nil {
-		return fmt.Errorf("update status of %s/%s: %w", preview.Namespace, preview.Name, err)
-	}
 	return nil
 }
 

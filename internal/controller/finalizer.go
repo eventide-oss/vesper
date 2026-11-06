@@ -63,6 +63,7 @@ func (r *PreviewEnvironmentReconciler) cleanup(
 			return fmt.Errorf("delete namespace %s: %w", name, err)
 		}
 		log.Info("deleting namespace", "previewNamespace", name)
+		r.event(preview, corev1.EventTypeNormal, EventDeleting, "DeleteNamespace", "deleting namespace "+name)
 		return nil // wait until it is gone
 	default:
 		return nil // still terminating: wait until it is gone

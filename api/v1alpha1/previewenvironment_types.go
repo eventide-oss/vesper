@@ -99,24 +99,50 @@ const (
 	PhaseExpired Phase = "Expired"
 )
 
-// ConditionReady is the main condition type of a preview: True when its
-// application is running and reachable.
-const ConditionReady = "Ready"
+// Condition types of a preview.
+const (
+	// ConditionReady sums up the preview: True when its application is
+	// running and reachable. When it is False, its reason says what blocks.
+	ConditionReady = "Ready"
+	// ConditionAvailable is True when every replica of the application runs
+	// the requested image.
+	ConditionAvailable = "Available"
+	// ConditionExpired is True once the ttl of the preview has passed.
+	ConditionExpired = "Expired"
+)
 
-// Reasons of the Ready condition.
+// Reasons of the conditions of a preview, and of the events of the same name.
 const (
 	// ReasonProvisioning means the operator is setting up the preview, or
-	// its application is not available yet.
+	// its application is starting (Ready, Available).
 	ReasonProvisioning = "Provisioning"
 	// ReasonDeploymentAvailable means every replica of the application runs
-	// the requested image, behind its Service.
+	// the requested image, behind its Service (Ready, Available).
 	ReasonDeploymentAvailable = "DeploymentAvailable"
+	// ReasonPodsRejected means the API server rejects the pods of the
+	// preview, for example because its ResourceQuota is full. The message
+	// gives the error (Ready, Available).
+	ReasonPodsRejected = "PodsRejected"
+	// ReasonRolloutStuck means the application made no progress for the
+	// progress deadline of its Deployment, 10 minutes: often an image that
+	// cannot be pulled, or a container that keeps crashing (Ready, Available).
+	ReasonRolloutStuck = "RolloutStuck"
 	// ReasonNamespaceConflict means the namespace the preview needs exists and
-	// was not created by Vesper for this preview. Vesper leaves it untouched.
+	// was not created by Vesper for this preview. Vesper leaves it untouched
+	// (Ready, Available).
 	ReasonNamespaceConflict = "NamespaceConflict"
+	// ReasonReconcileError means the operator failed to set up the preview,
+	// for example because an object it needs exists and is not Vesper's. The
+	// message gives the error, and the operator retries (Ready).
+	ReasonReconcileError = "ReconcileError"
 	// ReasonExpired means the ttl of the preview has passed: it is being
-	// deleted.
+	// deleted (Ready).
 	ReasonExpired = "Expired"
+	// ReasonTTLNotReached means the ttl has not passed. The message gives the
+	// expiry (Expired is False).
+	ReasonTTLNotReached = "TTLNotReached"
+	// ReasonTTLPassed means the ttl has passed (Expired is True).
+	ReasonTTLPassed = "TTLPassed"
 )
 
 // PreviewEnvironmentStatus is the state of a preview as observed by the
@@ -151,9 +177,10 @@ type PreviewEnvironmentStatus struct {
 	// +kubebuilder:validation:Minimum=0
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// conditions describe the state of the preview in detail. The main type
-	// is "Ready". Each condition has a status (True, False or Unknown), a
-	// machine-readable reason and a human-readable message.
+	// conditions describe the state of the preview in detail: "Ready" sums
+	// it up, "Available" says whether its application runs, and "Expired"
+	// whether its ttl has passed. Each condition has a status (True, False or
+	// Unknown), a machine-readable reason and a human-readable message.
 	// +listType=map
 	// +listMapKey=type
 	// +optional

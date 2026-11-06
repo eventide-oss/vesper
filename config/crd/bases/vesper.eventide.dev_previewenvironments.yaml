@@ -148,9 +148,10 @@ spec:
             properties:
               conditions:
                 description: |-
-                  conditions describe the state of the preview in detail. The main type
-                  is "Ready". Each condition has a status (True, False or Unknown), a
-                  machine-readable reason and a human-readable message.
+                  conditions describe the state of the preview in detail: "Ready" sums
+                  it up, "Available" says whether its application runs, and "Expired"
+                  whether its ttl has passed. Each condition has a status (True, False or
+                  Unknown), a machine-readable reason and a human-readable message.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
