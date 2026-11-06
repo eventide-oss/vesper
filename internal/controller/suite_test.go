@@ -30,6 +30,9 @@ import (
 // Each test works in a namespace of its own.
 
 const (
+	// envtestDomain is the preview domain of the controller under test.
+	envtestDomain = "preview.example.com"
+
 	eventuallyTimeout  = 10 * time.Second
 	eventuallyInterval = 100 * time.Millisecond
 )
@@ -97,7 +100,7 @@ func startEnvtest() (stop func() error, err error) {
 	if err != nil {
 		return stopEnv(fmt.Errorf("create manager: %w", err))
 	}
-	r := &PreviewEnvironmentReconciler{Client: mgr.GetClient(), Scheme: scheme}
+	r := &PreviewEnvironmentReconciler{Client: mgr.GetClient(), Scheme: scheme, PreviewDomain: envtestDomain}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return stopEnv(fmt.Errorf("set up controller: %w", err))
 	}

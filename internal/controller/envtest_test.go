@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -383,4 +384,30 @@ func TestEnvtestExpiresAtFollowsTTL(t *testing.T) {
 		return envClient.Update(context.Background(), &preview) // retried on a conflict
 	})
 	waitForExpiry(72 * time.Hour)
+}
+
+// TestEnvtestCreatesIngress checks that the API server accepts the Ingress of
+// a preview and that status.url gives its host.
+func TestEnvtestCreatesIngress(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+	host := HostName(p.namespace, p.name, envtestDomain)
+
+	eventually(t, func() error {
+		var preview vesperv1alpha1.PreviewEnvironment
+		if err := p.get(&preview); err != nil {
+			return err
+		}
+		if want := "http://" + host; preview.Status.URL != want {
+			return fmt.Errorf("url = %q, want %q", preview.Status.URL, want)
+		}
+		return nil
+	})
+	var ing networkingv1.Ingress
+	if err := p.getInPreviewNamespace(IngressName, &ing); err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if len(ing.Spec.Rules) != 1 || ing.Spec.Rules[0].Host != host {
+		t.Errorf("rules = %+v, want one rule for %s", ing.Spec.Rules, host)
+	}
 }
