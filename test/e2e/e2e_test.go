@@ -78,10 +78,11 @@ func eventually(t *testing.T, timeout time.Duration, check func() error) {
 	}
 }
 
-// TestPreviewBecomesReady creates a preview of an unprivileged nginx image and
-// waits until the operator, running in the cluster, has deployed it and its
-// pod is ready.
-func TestPreviewBecomesReady(t *testing.T) {
+// TestPreviewLifecycle creates a preview of an unprivileged nginx image, waits
+// until the operator, running in the cluster, has deployed it and its pod is
+// ready, then deletes it and waits until the preview and its namespace are
+// gone.
+func TestPreviewLifecycle(t *testing.T) {
 	ctx := context.Background()
 	c := newClient(t)
 
@@ -156,6 +157,23 @@ func TestPreviewBecomesReady(t *testing.T) {
 		}
 		return errors.New("the service has no ready endpoint")
 	})
+
+	// Deleting the preview deletes its namespace first: the finalizer keeps
+	// the preview until the namespace is gone (#39).
+	if err := c.Delete(ctx, preview); err != nil {
+		t.Fatalf("delete preview: %v", err)
+	}
+	eventually(t, readyTimeout, func() error {
+		err := c.Get(ctx, types.NamespacedName{Name: previewNamespace}, &corev1.Namespace{})
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get preview namespace %s: %v, want NotFound", previewNamespace, err)
+		}
+		err = c.Get(ctx, client.ObjectKeyFromObject(preview), &vesperv1alpha1.PreviewEnvironment{})
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("get preview: %v, want NotFound", err)
+		}
+		return nil
+	})
 }
 
 func podReady(pod *corev1.Pod) bool {
@@ -167,8 +185,9 @@ func podReady(pod *corev1.Pod) bool {
 	return false
 }
 
-// cleanup deletes the preview with its namespace, then the preview namespace,
-// which the operator does not delete yet (#39), and waits until they are gone.
+// cleanup deletes the namespace of the test, with the preview in it, and the
+// preview namespace, in case the test stopped before deleting the preview, and
+// waits until they are gone.
 func cleanup(t *testing.T, c client.Client, namespace, previewNamespace string) {
 	t.Helper()
 	ctx := context.Background()
