@@ -73,6 +73,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups="",resources=limitranges;resourcequotas,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
 
 // Reconcile brings the cluster to the state a PreviewEnvironment asks for. It
 // only knows the preview's namespace and name, not what changed, so it reads
@@ -120,6 +121,9 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 	}
 
 	if err := r.ensureLimits(ctx, &preview, name); err != nil {
+		return ctrl.Result{}, err
+	}
+	if err := r.ensureNetworkPolicy(ctx, &preview, name); err != nil {
 		return ctrl.Result{}, err
 	}
 	deployment, err := r.ensureDeployment(ctx, &preview, name)
@@ -252,6 +256,9 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		Watches(&corev1.ResourceQuota{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		Watches(&networkingv1.NetworkPolicy{},
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		// The objects are tied to their preview by labels, not owner
