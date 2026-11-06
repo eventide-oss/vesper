@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -27,15 +26,6 @@ const (
 	appLabel      = "app.kubernetes.io/name"
 	appLabelValue = "preview-app"
 )
-
-// previewLabels returns the labels that tie an object to its preview.
-func previewLabels(preview *vesperv1alpha1.PreviewEnvironment) map[string]string {
-	return map[string]string{
-		LabelManagedBy:        ManagedByVesper,
-		LabelPreviewNamespace: preview.Namespace,
-		LabelPreviewName:      preview.Name,
-	}
-}
 
 // ensureDeployment creates or updates the Deployment of the preview in
 // namespace, and returns it as read or written.
@@ -65,10 +55,7 @@ func (r *PreviewEnvironmentReconciler) ensureDeployment(
 // server adds defaults to the rest (imagePullPolicy, strategy...), and
 // overwriting them would make every reconciliation update the Deployment.
 func mutateDeployment(d *appsv1.Deployment, preview *vesperv1alpha1.PreviewEnvironment) {
-	if d.Labels == nil {
-		d.Labels = map[string]string{}
-	}
-	maps.Copy(d.Labels, previewLabels(preview))
+	setPreviewLabels(d, preview)
 
 	d.Spec.Replicas = ptr.To(replicas(preview))
 	if d.Spec.Selector == nil { // immutable once created
@@ -76,10 +63,7 @@ func mutateDeployment(d *appsv1.Deployment, preview *vesperv1alpha1.PreviewEnvir
 	}
 
 	tmpl := &d.Spec.Template
-	if tmpl.Labels == nil {
-		tmpl.Labels = map[string]string{}
-	}
-	maps.Copy(tmpl.Labels, previewLabels(preview))
+	setPreviewLabels(&tmpl.ObjectMeta, preview)
 	tmpl.Labels[appLabel] = appLabelValue
 
 	// The restricted Pod Security Standard, which the namespace enforces.

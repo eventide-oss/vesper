@@ -34,24 +34,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	vesperv1alpha1 "github.com/eventide-oss/vesper/api/v1alpha1"
 )
 
-// Labels on the namespaces Vesper creates. A namespace is cluster-scoped and
-// cannot have a namespaced owner, so these labels record which preview it
-// belongs to.
-const (
-	LabelManagedBy        = "app.kubernetes.io/managed-by"
-	ManagedByVesper       = "vesper"
-	LabelPreviewNamespace = "vesper.eventide.dev/preview-namespace"
-	LabelPreviewName      = "vesper.eventide.dev/preview-name"
-
-	// labelPodSecurity makes the namespace enforce the restricted Pod Security
-	// Standard: no privileged, root or extra-capability pods in it.
-	labelPodSecurity = "pod-security.kubernetes.io/enforce"
-)
+// labelPodSecurity makes the namespace enforce the restricted Pod Security
+// Standard: no privileged, root or extra-capability pods in it.
+const labelPodSecurity = "pod-security.kubernetes.io/enforce"
 
 // PreviewEnvironmentReconciler runs each PreviewEnvironment in its own
 // namespace: a Deployment of its image, behind a Service.
@@ -131,9 +120,9 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 
 	ns = corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
 		Name:   name,
-		Labels: previewLabels(preview),
+		Labels: map[string]string{labelPodSecurity: "restricted"},
 	}}
-	ns.Labels[labelPodSecurity] = "restricted"
+	setPreviewLabels(&ns, preview)
 	if err := r.Create(ctx, &ns); err != nil {
 		if apierrors.IsAlreadyExists(err) {
 			// The cache had not seen it yet. Reconcile again to read it and
@@ -144,14 +133,6 @@ func (r *PreviewEnvironmentReconciler) ensureNamespace(
 	}
 	logf.FromContext(ctx).Info("created namespace", "previewNamespace", name)
 	return true, nil
-}
-
-// ownedBy reports whether Vesper created obj for preview.
-func ownedBy(obj metav1.Object, preview *vesperv1alpha1.PreviewEnvironment) bool {
-	labels := obj.GetLabels()
-	return labels[LabelManagedBy] == ManagedByVesper &&
-		labels[LabelPreviewNamespace] == preview.Namespace &&
-		labels[LabelPreviewName] == preview.Name
 }
 
 // setStatus writes the internal URL, the phase and the Ready condition. It
@@ -206,19 +187,4 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 		// references: an owner reference cannot point to another namespace.
 		Named("previewenvironment").
 		Complete(r)
-}
-
-// managedByVesper filters the events to the objects Vesper created.
-func managedByVesper(obj client.Object) bool {
-	return obj.GetLabels()[LabelManagedBy] == ManagedByVesper
-}
-
-// previewOfObject maps an object Vesper created to its preview.
-func previewOfObject(_ context.Context, obj client.Object) []reconcile.Request {
-	labels := obj.GetLabels()
-	namespace, name := labels[LabelPreviewNamespace], labels[LabelPreviewName]
-	if namespace == "" || name == "" {
-		return nil
-	}
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}}
 }

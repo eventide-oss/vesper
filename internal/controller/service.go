@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"maps"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -56,10 +55,7 @@ func (r *PreviewEnvironmentReconciler) ensureService(
 // server fills in the rest (clusterIP, which can never change, ipFamilies,
 // sessionAffinity...).
 func mutateService(s *corev1.Service, preview *vesperv1alpha1.PreviewEnvironment) {
-	if s.Labels == nil {
-		s.Labels = map[string]string{}
-	}
-	maps.Copy(s.Labels, previewLabels(preview))
+	setPreviewLabels(s, preview)
 
 	// Reachable from inside the cluster only. The public address is the job
 	// of an Ingress.
