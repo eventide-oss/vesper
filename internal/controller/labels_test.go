@@ -24,13 +24,14 @@ func TestReconcileTracksObjectsWithLabels(t *testing.T) {
 		t.Fatalf("get ingress: %v", err)
 	}
 	objects := map[string]metav1.Object{
-		"namespace":    getNamespace(t, r, NamespaceName("team-a", "pr-42")),
-		"deployment":   d,
-		"pod template": &d.Spec.Template.ObjectMeta,
-		"service":      getService(t, r),
-		"ingress":      ing,
-		"limitrange":   getLimitRange(t, r),
-		"quota":        getResourceQuota(t, r),
+		"namespace":     getNamespace(t, r, NamespaceName("team-a", "pr-42")),
+		"deployment":    d,
+		"pod template":  &d.Spec.Template.ObjectMeta,
+		"service":       getService(t, r),
+		"ingress":       ing,
+		"limitrange":    getLimitRange(t, r),
+		"quota":         getResourceQuota(t, r),
+		"networkpolicy": getNetworkPolicy(t, r),
 	}
 	for kind, obj := range objects {
 		for k, v := range want {

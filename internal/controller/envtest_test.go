@@ -12,6 +12,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -428,5 +429,41 @@ func TestEnvtestCreatesLimits(t *testing.T) {
 	eventually(t, func() error { return p.getInPreviewNamespace(LimitsName, &q) })
 	if got := q.Spec.Hard.Pods().String(); got != "10" {
 		t.Errorf("resourcequota pods = %s, want 10", got)
+	}
+}
+
+// TestEnvtestCreatesNetworkPolicy checks that the API server accepts the
+// NetworkPolicy of a preview as Vesper writes it: a later reconciliation,
+// after a change of the spec, does not rewrite it. envtest has no network,
+// so the e2e test checks that the policy is enforced.
+func TestEnvtestCreatesNetworkPolicy(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+	p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+
+	var np networkingv1.NetworkPolicy
+	if err := p.getInPreviewNamespace(NetworkPolicyName, &np); err != nil {
+		t.Fatalf("get networkpolicy: %v", err)
+	}
+	if !equality.Semantic.DeepEqual(np.Spec, wantNetworkPolicySpec()) {
+		t.Errorf("networkpolicy spec = %+v, want %+v", np.Spec, wantNetworkPolicySpec())
+	}
+
+	eventually(t, func() error {
+		var preview vesperv1alpha1.PreviewEnvironment
+		if err := p.get(&preview); err != nil {
+			return err
+		}
+		preview.Spec.Replicas = 2
+		return envClient.Update(context.Background(), &preview)
+	})
+	p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	var after networkingv1.NetworkPolicy
+	if err := p.getInPreviewNamespace(NetworkPolicyName, &after); err != nil {
+		t.Fatalf("get networkpolicy: %v", err)
+	}
+	if after.ResourceVersion != np.ResourceVersion {
+		t.Errorf("networkpolicy rewritten by a reconciliation: resourceVersion %s then %s",
+			np.ResourceVersion, after.ResourceVersion)
 	}
 }

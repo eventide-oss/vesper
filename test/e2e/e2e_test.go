@@ -108,17 +108,7 @@ func TestPreviewLifecycle(t *testing.T) {
 		t.Fatalf("create preview: %v", err)
 	}
 
-	eventually(t, readyTimeout, func() error {
-		var p vesperv1alpha1.PreviewEnvironment
-		if err := c.Get(ctx, client.ObjectKeyFromObject(preview), &p); err != nil {
-			return err
-		}
-		ready := meta.FindStatusCondition(p.Status.Conditions, vesperv1alpha1.ConditionReady)
-		if p.Status.Phase != vesperv1alpha1.PhaseReady || ready == nil || ready.Status != metav1.ConditionTrue {
-			return fmt.Errorf("phase %q, Ready condition %+v", p.Status.Phase, ready)
-		}
-		return nil
-	})
+	waitForReady(t, c, preview)
 
 	var d appsv1.Deployment
 	key := types.NamespacedName{Namespace: previewNamespace, Name: controller.DeploymentName}
@@ -202,6 +192,22 @@ func TestPreviewLifecycle(t *testing.T) {
 		err = c.Get(ctx, client.ObjectKeyFromObject(preview), &vesperv1alpha1.PreviewEnvironment{})
 		if !apierrors.IsNotFound(err) {
 			return fmt.Errorf("get preview: %v, want NotFound", err)
+		}
+		return nil
+	})
+}
+
+// waitForReady waits until the operator reports the preview Ready.
+func waitForReady(t *testing.T, c client.Client, preview *vesperv1alpha1.PreviewEnvironment) {
+	t.Helper()
+	eventually(t, readyTimeout, func() error {
+		var p vesperv1alpha1.PreviewEnvironment
+		if err := c.Get(context.Background(), client.ObjectKeyFromObject(preview), &p); err != nil {
+			return err
+		}
+		ready := meta.FindStatusCondition(p.Status.Conditions, vesperv1alpha1.ConditionReady)
+		if p.Status.Phase != vesperv1alpha1.PhaseReady || ready == nil || ready.Status != metav1.ConditionTrue {
+			return fmt.Errorf("phase %q, Ready condition %+v", p.Status.Phase, ready)
 		}
 		return nil
 	})

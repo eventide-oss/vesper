@@ -116,7 +116,8 @@ func TestReconcileRestoresChangedQuota(t *testing.T) {
 
 // TestReconcileCreatesLimitsBeforeDeployment records the order of creation:
 // the API server applies a LimitRange and a quota only to pods created after
-// them, and the quota rejects pods without limits.
+// them, and the quota rejects pods without limits. The NetworkPolicy also
+// comes first, so that no pod runs without it.
 func TestReconcileCreatesLimitsBeforeDeployment(t *testing.T) {
 	r := newReconciler(t, newPreview())
 	var created []string
@@ -128,7 +129,9 @@ func TestReconcileCreatesLimitsBeforeDeployment(t *testing.T) {
 	})
 	reconcileOnce(t, r)
 
-	want := []string{"*v1.Namespace", "*v1.LimitRange", "*v1.ResourceQuota", "*v1.Deployment", "*v1.Service"}
+	want := []string{
+		"*v1.Namespace", "*v1.LimitRange", "*v1.ResourceQuota", "*v1.NetworkPolicy", "*v1.Deployment", "*v1.Service",
+	}
 	if !reflect.DeepEqual(created, want) {
 		t.Errorf("created %v, want %v", created, want)
 	}
