@@ -142,6 +142,28 @@ func TestReconcileTwiceChangesNothing(t *testing.T) {
 	}
 }
 
+// TestReconcileRestoresNamespaceLabels lowers the Pod Security level of the
+// preview namespace by hand: the operator raises it again, and keeps the
+// labels it does not own.
+func TestReconcileRestoresNamespaceLabels(t *testing.T) {
+	r := newReconciler(t, newPreview())
+	reconcileOnce(t, r)
+	nsName := NamespaceName("team-a", "pr-42")
+
+	ns := getNamespace(t, r, nsName)
+	ns.Labels["pod-security.kubernetes.io/enforce"] = "privileged"
+	ns.Labels["team"] = "a"
+	if err := r.Update(context.Background(), ns); err != nil {
+		t.Fatalf("update namespace: %v", err)
+	}
+	reconcileOnce(t, r)
+
+	got := getNamespace(t, r, nsName).Labels
+	if got["pod-security.kubernetes.io/enforce"] != "restricted" || got["team"] != "a" {
+		t.Errorf("namespace labels = %v, want the restricted level back and team=a kept", got)
+	}
+}
+
 func TestReconcileDeletedPreview(t *testing.T) {
 	r := newReconciler(t) // the preview does not exist
 	reconcileOnce(t, r)

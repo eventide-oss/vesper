@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -465,5 +466,29 @@ func TestEnvtestCreatesNetworkPolicy(t *testing.T) {
 	if after.ResourceVersion != np.ResourceVersion {
 		t.Errorf("networkpolicy rewritten by a reconciliation: resourceVersion %s then %s",
 			np.ResourceVersion, after.ResourceVersion)
+	}
+}
+
+// TestEnvtestRejectsPrivilegedPod creates a pod that breaks the restricted
+// Pod Security Standard in the namespace of a preview: the API server rejects
+// it. envtest runs no quota controller, so the API server would reject any
+// pod under the quota of the preview: the test checks that the reason is Pod
+// Security.
+func TestEnvtestRejectsPrivilegedPod(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+	eventually(t, func() error { return p.getInPreviewNamespace(DeploymentName, &appsv1.Deployment{}) })
+
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: p.previewNamespace, Name: "privileged"},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			Name:            "app",
+			Image:           "ghcr.io/acme/app:pr-42",
+			SecurityContext: &corev1.SecurityContext{Privileged: ptr.To(true)},
+		}}},
+	}
+	err := envClient.Create(context.Background(), pod)
+	if err == nil || !strings.Contains(err.Error(), `violates PodSecurity "restricted`) {
+		t.Errorf("create privileged pod: %v, want a rejection by Pod Security", err)
 	}
 }
