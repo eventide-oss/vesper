@@ -121,6 +121,9 @@ then, delete it with
 
 ### How Vesper tracks preview objects
 
+The reasons for this design, and the alternatives, are in
+[ADR-0002](adr/0002-namespace-per-preview.md).
+
 Every object Vesper creates for a preview (the namespace, the Deployment, its
 pods and the Service) carries the same three labels, set by
 `setPreviewLabels` in `labels.go`:
