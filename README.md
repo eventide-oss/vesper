@@ -7,8 +7,8 @@ Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 removes it automatically when its time to live (TTL) expires.
 
 > **Status:** pre-alpha. The `PreviewEnvironment` API and the read-only CLI
-> work today, and the operator runs each preview's image in its own namespace;
-> it does not give it an address yet.
+> work today, and the operator runs each preview's image in its own namespace,
+> gives it a public address and deletes it when its TTL expires.
 > See [Status](#status).
 
 ## Why
@@ -31,7 +31,7 @@ expires (for example after 24 hours), so it does not use the cluster forever.
 
 ## How it works
 
-This is the target design. Dashed boxes are not built yet.
+This is how Vesper works today.
 
 ```mermaid
 flowchart LR
@@ -41,12 +41,9 @@ flowchart LR
     pe -->|"watched by"| op["Vesper operator"]
     op -->|"creates"| deploy
     subgraph ns ["Namespace for pr-42"]
-        deploy["Deployment and Pods"] --- svc["Service"] --- ingress["Ingress<br/>pr-42.preview.example.com"]
+        deploy["Deployment and Pods"] --- svc["Service"] --- ingress["Ingress<br/>pr-42-team-a-3f9c2a1b.preview.example.com"]
     end
     op -->|"deletes when the TTL expires"| ns
-
-    classDef planned stroke-dasharray: 5 5
-    class ingress planned
 ```
 
 1. A pull request changes the application.
@@ -79,6 +76,10 @@ Works today:
   behind a Service that gives it a stable address inside the cluster. The
   preview becomes `Ready` when every replica runs. Images must run as a
   non-root user.
+- With a preview domain configured, each preview gets a public address, such
+  as `http://pr-42-team-a-3f9c2a1b.preview.example.com`, through an Ingress
+  served by the ingress controller of the cluster (Traefik, HAProxy...), and
+  written to `status.url`. HTTPS is not supported yet.
 - Previews expire: when its `ttl` has passed (1 minute to 7 days, 24 hours by
   default), a preview is deleted, and deleting a preview deletes its namespace
   and everything in it. Raise the `ttl` to extend it.
@@ -92,7 +93,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| Public address (Ingress), quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| HTTPS, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
@@ -174,9 +175,12 @@ NS=$(kubectl get ns -l vesper.eventide.dev/preview-name=previewenvironment-sampl
 kubectl get deploy,pods,svc -n "$NS"
 ```
 
-**8. Open it.** A preview has no public address yet, only an address inside
-the cluster (`kubectl get pe -o wide` shows it). Forward a local port to its
-Service, then open <http://localhost:8080> in a browser.
+**8. Open it.** This local cluster has no ingress controller and the operator
+runs without a preview domain, so the preview has no public address, only an
+address inside the cluster (`kubectl get pe -o wide` shows it). Forward a
+local port to its Service, then open <http://localhost:8080> in a browser. To
+give previews a public address, see
+[Public address](docs/development.md#public-address).
 
 ```sh
 kubectl port-forward -n "$NS" svc/app 8080:80

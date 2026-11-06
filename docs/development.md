@@ -93,9 +93,11 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    (`http`), so the Service stays the same when `spec.port` changes. Its
    address, `http://app.<preview namespace>.svc.cluster.local`, is written to
    `status.internalURL` (`kubectl get pe -o wide`). It is reachable from inside
-   the cluster only; the public address (`status.url`) comes with an Ingress
-   in P3;
-5. sets the phase to `Ready`, with the `Ready` condition `True`
+   the cluster only;
+5. with a preview domain, creates or updates an Ingress named `app`
+   (`ingress.go`) that routes the host of the preview to the Service, and
+   writes its URL to `status.url` (see [Public address](#public-address));
+6. sets the phase to `Ready`, with the `Ready` condition `True`
    (`DeploymentAvailable`), when every replica runs the requested image, and
    to `Pending` (`Provisioning`, for example "0/2 replicas available") until
    then.
@@ -107,14 +109,48 @@ reconciliation that changes nothing writes nothing.
 If a namespace of that name exists without the labels of that preview, the
 operator does not touch it: the phase becomes `Failed` with the reason
 `NamespaceConflict`. A namespace, a Deployment or a Service deleted or changed
-by hand is restored. To reach a preview from your machine before it has a
-public address:
+by hand is restored. To reach a preview from your machine without a public
+address:
 
 ```sh
 kubectl port-forward -n <preview namespace> svc/app 8080:80
 ```
 
-Not yet: a public address (P3).
+### Public address
+
+A preview gets a public address when the operator runs with a preview domain:
+
+```sh
+go run ./cmd --preview-domain=preview.example.com [--ingress-class=traefik]
+```
+
+In the cluster, add the flags to the args of the manager Deployment
+(`config/manager/manager.yaml`, or a kustomize patch as in
+`test/e2e/kustomization.yaml`). Three pieces work together:
+
+- **The Ingress.** For each preview, the operator creates an Ingress named
+  `app` that routes `<name>-<namespace>-<hash>.<domain>` to the Service `app`,
+  and writes `http://<host>` to `status.url`. The name and the namespace share
+  one DNS label (`HostName` in `naming.go`), with the hash of the preview
+  namespace, so that the name stays unique and fits in 63 characters.
+- **An ingress controller.** An Ingress only describes the route: the
+  controller (Traefik, included in k3s; HAProxy; Contour...) serves it.
+  `--ingress-class` selects it; without it the default class of the cluster
+  is used, and the class the cluster fills in is kept.
+- **A wildcard DNS record.** `*.preview.example.com` must point to the
+  ingress controller, so that every preview is reachable without a DNS change.
+  A wildcard covers one label, which is why the host has a single one.
+
+Without `--preview-domain`, no Ingress is created and `status.url` stays
+empty; an Ingress Vesper created before is deleted. Both flags are validated
+when the operator starts. For a local try, `localtest.me` and its subdomains
+resolve to 127.0.0.1: with an ingress controller in kind and
+`--preview-domain=preview.localtest.me`, the URL of a preview opens through a
+port-forward to the controller.
+
+HTTPS is not supported yet (#100); Vesper uses an Ingress rather than the
+Gateway API, which may come later (#99). The NetworkPolicy of a preview
+(#42) will have to let the ingress controller in.
 
 ### Preview lifetime (TTL)
 
@@ -180,7 +216,7 @@ The reasons for this design, and the alternatives, are in
 [ADR-0002](adr/0002-namespace-per-preview.md).
 
 Every object Vesper creates for a preview (the namespace, the Deployment, its
-pods and the Service) carries the same three labels, set by
+pods, the Service and the Ingress) carries the same three labels, set by
 `setPreviewLabels` in `labels.go`:
 
 | Label | Value |
