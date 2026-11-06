@@ -90,7 +90,14 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    must run as a non-root user**: an image that runs as root, such as the
    official `nginx`, stays in `CreateContainerConfigError`
    (`nginxinc/nginx-unprivileged` works);
-4. sets the phase to `Ready`, with the `Ready` condition `True`
+4. creates or updates a ClusterIP Service named `app` in front of the pods
+   (`service.go`): port 80, which targets the container port by its name
+   (`http`), so the Service stays the same when `spec.port` changes. Its
+   address, `http://app.<preview namespace>.svc.cluster.local`, is written to
+   `status.internalURL` (`kubectl get pe -o wide`). It is reachable from inside
+   the cluster only; the public address (`status.url`) comes with an Ingress
+   in P3;
+5. sets the phase to `Ready`, with the `Ready` condition `True`
    (`DeploymentAvailable`), when every replica runs the requested image, and
    to `Pending` (`Provisioning`, for example "0/2 replicas available") until
    then.
@@ -103,15 +110,16 @@ another namespace.
 
 If a namespace of that name exists without the labels of that preview, the
 operator does not touch it: the phase becomes `Failed` with the reason
-`NamespaceConflict`. A namespace or a Deployment deleted or changed by hand is
-restored. To reach a preview before it has an address:
+`NamespaceConflict`. A namespace, a Deployment or a Service deleted or changed
+by hand is restored. To reach a preview from your machine before it has a
+public address:
 
 ```sh
-kubectl port-forward -n <preview namespace> deploy/app 8080:<port>
+kubectl port-forward -n <preview namespace> svc/app 8080:80
 ```
 
-Not yet: a Service (#32) and an address (P3), and deleting a preview leaves
-its namespace. Cleanup on deletion comes with a finalizer in P3; until
+Not yet: a public address (P3), and deleting a preview leaves its
+namespace. Cleanup on deletion comes with a finalizer in P3; until
 then, delete it with
 `kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>`.
 

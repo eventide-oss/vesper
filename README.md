@@ -46,7 +46,7 @@ flowchart LR
     op -.->|"deletes when the TTL expires"| ns
 
     classDef planned stroke-dasharray: 5 5
-    class svc,ingress planned
+    class ingress planned
 ```
 
 1. A pull request changes the application.
@@ -75,8 +75,9 @@ Works today:
   other than `latest` or with a digest) and a status that only the operator can
   write. `kubectl get pe` shows the phase, the URL and the expiry.
 - The operator runs each preview in its own namespace, with the restricted Pod
-  Security profile: a Deployment of its image, port, environment and replicas.
-  The preview becomes `Ready` when every replica runs. Images must run as a
+  Security profile: a Deployment of its image, port, environment and replicas,
+  behind a Service that gives it a stable address inside the cluster. The
+  preview becomes `Ready` when every replica runs. Images must run as a
   non-root user.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
@@ -88,8 +89,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| The operator exposes the application inside the cluster: Service | [P2 - Operator core](https://github.com/eventide-oss/vesper/milestone/3) |
-| Ingress address, TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| Public address (Ingress), TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
