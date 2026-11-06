@@ -350,3 +350,37 @@ func TestEnvtestDeletionWaitsForNamespace(t *testing.T) {
 		t.Errorf("preview = %+v, want it being deleted, with its finalizer", got.ObjectMeta)
 	}
 }
+
+// TestEnvtestExpiresAtFollowsTTL checks status.expiresAt against the
+// creation time the API server sets: 24h by default, then the new ttl.
+// Expiry itself is covered with a fake clock in the unit tests.
+func TestEnvtestExpiresAtFollowsTTL(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+
+	waitForExpiry := func(ttl time.Duration) {
+		t.Helper()
+		eventually(t, func() error {
+			var preview vesperv1alpha1.PreviewEnvironment
+			if err := p.get(&preview); err != nil {
+				return err
+			}
+			want := preview.CreationTimestamp.Add(ttl)
+			if got := preview.Status.ExpiresAt; got == nil || !got.Time.Equal(want) {
+				return fmt.Errorf("expiresAt = %v, want %s", got, want)
+			}
+			return nil
+		})
+	}
+	waitForExpiry(24 * time.Hour)
+
+	eventually(t, func() error {
+		var preview vesperv1alpha1.PreviewEnvironment
+		if err := p.get(&preview); err != nil {
+			return err
+		}
+		preview.Spec.TTL = &metav1.Duration{Duration: 72 * time.Hour}
+		return envClient.Update(context.Background(), &preview) // retried on a conflict
+	})
+	waitForExpiry(72 * time.Hour)
+}
