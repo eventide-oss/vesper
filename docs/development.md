@@ -199,6 +199,7 @@ storing the object. `make uninstall` removes the CRD and every
 ```sh
 make test               # unit and controller (envtest) tests, no cluster needed
 make test-integration   # vesperctl against the kind cluster (created if missing)
+make test-e2e           # the operator image in a fresh kind cluster (needs Docker)
 ```
 
 ### Controller tests (envtest)
@@ -232,6 +233,30 @@ make setup-envtest
 export KUBEBUILDER_ASSETS="$(bin/setup-envtest use 1.37.0 --bin-dir bin -p path)"
 go test -race -run Envtest -v ./internal/controller/
 ```
+
+### End-to-end test
+
+`make test-e2e` (`hack/test-e2e.sh`) checks the operator as it runs in
+production, in a container:
+
+1. it builds the operator image (`vesper-manager:e2e`) from the `Dockerfile`;
+2. it creates a fresh kind cluster, `vesper-e2e`, and loads the image into it;
+3. it deploys the CRD, the RBAC rules and the operator with
+   `config/default`, through the overlay `test/e2e/kustomization.yaml`, which
+   only sets the image (`make deploy` would edit
+   `config/manager/kustomization.yaml`);
+4. it runs `test/e2e` (build tag `e2e`): a preview of an unprivileged nginx
+   image must become `Ready`, with a ready pod admitted by the `restricted`
+   profile and a ready endpoint behind its Service;
+5. it deletes the cluster, even when the test fails. On failure it first
+   prints the operator logs, the previews and the recent events.
+
+The cluster has a kubeconfig of its own, in a temporary file: your kubeconfig
+and current context are not changed, and the operator you run with `make run`
+does not see the test previews. The script stops if a `vesper-e2e` cluster
+already exists. Set `E2E_KEEP_CLUSTER=1` to keep the cluster after the test;
+the script prints the `KUBECONFIG` to use. It takes about two minutes, mostly
+to build the image and create the cluster. CI runs it on every pull request.
 
 ### Integration tests
 
