@@ -28,6 +28,14 @@ type usageError struct{ err error }
 func (e *usageError) Error() string { return e.err.Error() }
 func (e *usageError) Unwrap() error { return e.err }
 
+// invalidError marks input that the API server rejected (422): the command
+// line was well formed, but a value is not allowed. run maps it to exit code
+// 2, like a usage error, without printing the usage, which would not help.
+type invalidError struct{ err error }
+
+func (e *invalidError) Error() string { return e.err.Error() }
+func (e *invalidError) Unwrap() error { return e.err }
+
 // noArgs is cobra.NoArgs, with its error marked as a usage error.
 func noArgs(cmd *cobra.Command, args []string) error {
 	if err := cobra.NoArgs(cmd, args); err != nil {
@@ -66,7 +74,8 @@ func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFac
 	// Persistent flags are inherited by every subcommand, as in kubectl.
 	opts.addFlags(root.PersistentFlags())
 
-	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory), newCompletionCmd())
+	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory), newCreateCmd(factory),
+		newCompletionCmd())
 	return root
 }
 
@@ -130,5 +139,9 @@ func execute(root *cobra.Command, args []string, stderr io.Writer) (code int) {
 		return exitUsage
 	}
 	_, _ = fmt.Fprintf(stderr, "vesperctl: %v\n", err)
+	var invalidErr *invalidError
+	if errors.As(err, &invalidErr) {
+		return exitUsage
+	}
 	return exitFailure
 }
