@@ -77,11 +77,9 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
    (`NamespaceName` in `naming.go`): truncated to 63 characters, with an
    8-character hash of `<namespace>/<name>` so that two previews never share a
    namespace. The same preview always gets the same name;
-2. labels it with `app.kubernetes.io/managed-by=vesper` and
-   `vesper.eventide.dev/preview-namespace` and `vesper.eventide.dev/preview-name`,
-   which record its preview (a cluster-scoped namespace cannot have a
-   namespaced owner reference), and with
-   `pod-security.kubernetes.io/enforce=restricted`;
+2. labels it with the preview labels (see
+   [How Vesper tracks preview objects](#how-vesper-tracks-preview-objects))
+   and with `pod-security.kubernetes.io/enforce=restricted`;
 3. creates or updates a Deployment named `app` in it (`deployment.go`): the
    image, the port (named `http`), the environment variables and the replicas
    of the spec. Its pods run with the restricted Pod Security settings:
@@ -104,9 +102,7 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
 
 The Deployment is written with `controllerutil.CreateOrUpdate`, which sets only
 the fields Vesper owns and keeps the defaults the API server adds, so a
-reconciliation that changes nothing writes nothing. Its objects carry the
-labels of their preview rather than owner references, which cannot point to
-another namespace.
+reconciliation that changes nothing writes nothing.
 
 If a namespace of that name exists without the labels of that preview, the
 operator does not touch it: the phase becomes `Failed` with the reason
@@ -122,6 +118,45 @@ Not yet: a public address (P3), and deleting a preview leaves its
 namespace. Cleanup on deletion comes with a finalizer in P3; until
 then, delete it with
 `kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>`.
+
+### How Vesper tracks preview objects
+
+Every object Vesper creates for a preview (the namespace, the Deployment, its
+pods and the Service) carries the same three labels, set by
+`setPreviewLabels` in `labels.go`:
+
+| Label | Value |
+| --- | --- |
+| `app.kubernetes.io/managed-by` | `vesper` |
+| `vesper.eventide.dev/preview-namespace` | namespace of the `PreviewEnvironment` |
+| `vesper.eventide.dev/preview-name` | name of the `PreviewEnvironment` |
+
+Kubernetes usually ties an object to its owner with an owner reference, and
+its garbage collector deletes the object when the owner is deleted. Vesper
+cannot use one:
+
+- a namespaced object can only be owned by an object in the same namespace.
+  The preview lives in your namespace (`team-a`), its Deployment and Service
+  in the preview namespace (`vesper-team-a-pr-42-<hash>`). Kubernetes treats
+  such a reference as invalid, and the garbage collector may delete the
+  object, thinking its owner is gone;
+- the preview namespace is cluster-scoped, and a cluster-scoped object cannot
+  have a namespaced owner.
+
+The labels replace the owner reference:
+
+- **Ownership.** Before it modifies an object, the operator checks that it
+  carries the labels of this preview (`ownedBy`). It never takes over an
+  object someone else created: it reports an error, or `NamespaceConflict` for
+  a namespace.
+- **Watches.** A change to a labeled object reconciles its preview, found from
+  the labels (`previewOfObject`).
+- **Selection.** `kubectl get ns,deploy,svc -A -l app.kubernetes.io/managed-by=vesper`
+  lists everything Vesper created.
+- **Cleanup.** The preview namespace is the cleanup boundary: deleting it
+  deletes everything in it. Deleting the namespace when its preview is deleted
+  is the job of a finalizer
+  ([#39](https://github.com/eventide-oss/vesper/issues/39)).
 
 ### Change the API
 
