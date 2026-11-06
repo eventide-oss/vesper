@@ -5,7 +5,9 @@ LDFLAGS := -X main.version=$(VERSION)
 # Image of the operator (the manager) for docker-build, docker-push and deploy.
 IMG ?= controller:latest
 # Replaces the YEAR placeholder in hack/boilerplate.go.txt in generated Go files.
-YEAR ?= $(shell date +%Y)
+# Fixed, not the current year: otherwise every generated file would change each
+# January, and verify-generated would fail on every pull request.
+YEAR ?= 2026
 # Tool used to build images. The targets are tested with Docker only.
 CONTAINER_TOOL ?= docker
 
@@ -31,6 +33,19 @@ manifests: controller-gen ## Generate the CRD and RBAC manifests from the Go typ
 .PHONY: generate
 generate: controller-gen ## Generate the DeepCopy methods of the API types.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt",year=$(YEAR) paths="./..."
+
+# Files controller-gen writes: the CRD and RBAC manifests, and the DeepCopy methods.
+GENERATED_PATHS := config/crd/bases config/rbac/role.yaml ':(glob)**/zz_generated.*.go'
+
+.PHONY: verify-generated
+verify-generated: manifests generate ## Fail if the generated files differ from the committed ones.
+	@if [ -n "$$(git status --porcelain -- $(GENERATED_PATHS))" ]; then \
+		echo "Generated files are out of date: run 'make manifests generate' and commit the result." >&2; \
+		git status --short -- $(GENERATED_PATHS) >&2; \
+		git --no-pager diff -- $(GENERATED_PATHS) >&2; \
+		exit 1; \
+	fi
+	@echo "Generated files are up to date."
 
 # The controller tests start a real API server and etcd (envtest): KUBEBUILDER_ASSETS
 # points them to the binaries. Without it, `go test ./...` skips those tests.
