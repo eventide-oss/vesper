@@ -1,5 +1,7 @@
 # Documentation
 
+- [Cheat sheet](cheatsheet.md): the everyday commands, by task, with what
+  each flag does.
 - [vesperctl reference](cli.md): commands, output formats, exit codes and
   error messages.
 - [Development](development.md): tools and the local kind cluster.

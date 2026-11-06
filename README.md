@@ -104,6 +104,9 @@ Not yet:
 
 ## Try it locally
 
+Once it runs, the [cheat sheet](docs/cheatsheet.md) lists the everyday
+commands: create, follow, open, debug, extend and delete a preview.
+
 This walkthrough runs Vesper on a local [kind](https://kind.sigs.k8s.io/)
 cluster and deploys one preview. You need Go, Docker, kind and kubectl; see
 [Development](docs/development.md#prerequisites).
