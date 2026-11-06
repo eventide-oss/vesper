@@ -114,10 +114,38 @@ public address:
 kubectl port-forward -n <preview namespace> svc/app 8080:80
 ```
 
-Not yet: a public address (P3), and deleting a preview leaves its
-namespace. Cleanup on deletion comes with a finalizer in P3; until
-then, delete it with
-`kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>`.
+Not yet: a public address (P3).
+
+### Delete a preview
+
+Every preview carries the finalizer `vesper.eventide.dev/cleanup`, added
+before anything is created for it (`finalizer.go`). A finalizer turns a
+deletion into two steps:
+
+1. `kubectl delete pe <name>` only sets the `deletionTimestamp` of the
+   preview: it is being deleted, but still there.
+2. The operator deletes the preview namespace, which deletes the Deployment,
+   the pods and the Service in it. Once the namespace is gone, which takes a
+   few seconds, the operator removes its finalizer, and the API server
+   removes the preview.
+
+So a preview disappears only when everything it created is gone, and a new
+preview of the same name never meets the old namespace. The operator only
+deletes a namespace that carries the labels of the preview: after a
+`NamespaceConflict`, the foreign namespace is kept. If the deletion of the
+namespace fails, the finalizer stays and the operator retries.
+
+**If the operator is not running**, nothing removes the finalizer: the
+preview stays in deletion, `kubectl delete` waits, and so does
+`make uninstall`, which deletes every preview with the CRD. Start the
+operator again (`make run`) and the deletion completes. To give up the
+cleanup, remove the finalizer by hand, then delete the preview namespace
+yourself:
+
+```sh
+kubectl patch pe <name> -n <namespace> --type=merge -p '{"metadata":{"finalizers":null}}'
+kubectl delete namespace -l vesper.eventide.dev/preview-namespace=<namespace>,vesper.eventide.dev/preview-name=<name>
+```
 
 ### How Vesper tracks preview objects
 
@@ -157,9 +185,8 @@ The labels replace the owner reference:
 - **Selection.** `kubectl get ns,deploy,svc -A -l app.kubernetes.io/managed-by=vesper`
   lists everything Vesper created.
 - **Cleanup.** The preview namespace is the cleanup boundary: deleting it
-  deletes everything in it. Deleting the namespace when its preview is deleted
-  is the job of a finalizer
-  ([#39](https://github.com/eventide-oss/vesper/issues/39)).
+  deletes everything in it. The finalizer of the preview deletes it when the
+  preview is deleted (see [Delete a preview](#delete-a-preview)).
 
 ### Change the API
 

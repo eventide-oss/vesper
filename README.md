@@ -77,7 +77,8 @@ Works today:
 - The operator runs each preview in its own namespace, with the restricted Pod
   Security profile: a Deployment of its image, port, environment and replicas,
   behind a Service that gives it a stable address inside the cluster. The
-  preview becomes `Ready` when every replica runs. Images must run as a
+  preview becomes `Ready` when every replica runs. Deleting a preview deletes
+  its namespace and everything in it. Images must run as a
   non-root user.
 - `vesperctl list` and `vesperctl get`: read preview environments, as a table
   or as JSON or YAML, with clear error messages and documented exit codes. See
@@ -89,7 +90,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| Public address (Ingress), TTL expiry, clean deletion, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| Public address (Ingress), TTL expiry, quotas, security defaults, `vesperctl create`, `extend` and `delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
@@ -179,16 +180,21 @@ Service, then open <http://localhost:8080> in a browser.
 kubectl port-forward -n "$NS" svc/app 8080:80
 ```
 
-**9. Clean up.** Deleting a preview does not delete its namespace yet, so
-delete both. Then stop the operator (Ctrl-C), and remove the API or the
-whole cluster.
+**9. Clean up.** Delete the preview while the operator still runs: it
+deletes the preview namespace first, and `kubectl delete` returns once both
+are gone. Then stop the operator (Ctrl-C), and remove the API or the whole
+cluster.
 
 ```sh
 kubectl delete -f config/samples/vesper_v1alpha1_previewenvironment.yaml
-kubectl delete namespace "$NS"
-make uninstall   # removes the CRD and every PreviewEnvironment with it
-make kind-down   # or delete the whole cluster
+kubectl get ns "$NS"   # NotFound: the namespace is gone too
+make uninstall         # removes the CRD (delete the previews first, see below)
+make kind-down         # or delete the whole cluster
 ```
+
+A deleted preview waits for the operator to clean it up. If the operator is
+stopped, `kubectl delete` and `make uninstall` wait too: see
+[Delete a preview](docs/development.md#delete-a-preview).
 
 What the operator does, and why, is described in
 [Development](docs/development.md#what-the-operator-does).
