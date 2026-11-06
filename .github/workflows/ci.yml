@@ -40,7 +40,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - run: go test -race ./...
+      - run: make test
 
   lint:
     name: lint
