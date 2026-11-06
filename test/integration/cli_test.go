@@ -231,6 +231,42 @@ func TestCLI(t *testing.T) {
 		checkResult(t, code, stdout, stderr, 1,
 			fmt.Sprintf("vesperctl: preview environment \"pr-404\" not found in namespace %q\n", ns))
 	})
+
+	// The real CRD validates and completes what create sends.
+	t.Run("create", func(t *testing.T) {
+		code, stdout, stderr := vesperctl(t, "create", "pr-7", "-n", ns,
+			"--image", "ghcr.io/eventide/app:pr-7", "--ttl", "2h", "--env", "LOG_LEVEL=debug")
+		checkResult(t, code, stdout, stderr, 0, "")
+
+		code, stdout, stderr = vesperctl(t, "get", "pr-7", "-n", ns, "-o", "json")
+		checkResult(t, code, stdout, stderr, 0, "")
+		var got map[string]any
+		decode(t, stdout, &got)
+		// The port and the replicas are the defaults of the API server.
+		want := map[string]any{
+			"image": "ghcr.io/eventide/app:pr-7", "port": 8080.0, "replicas": 1.0, "ttl": "2h0m0s", "envCount": 1.0,
+		}
+		if !reflect.DeepEqual(got["spec"], want) {
+			t.Errorf("spec = %v, want %v", got["spec"], want)
+		}
+	})
+
+	t.Run("create existing", func(t *testing.T) {
+		code, stdout, stderr := vesperctl(t, "create", "pr-42", "-n", ns, "--image", "ghcr.io/eventide/app:pr-42")
+		checkResult(t, code, stdout, stderr, 1, fmt.Sprintf("vesperctl: preview environment \"pr-42\" "+
+			"already exists in namespace %q: delete it first, or choose another name\n", ns))
+	})
+
+	t.Run("create rejected by the API server", func(t *testing.T) {
+		code, stdout, stderr := vesperctl(t, "create", "pr-8", "-n", ns,
+			"--image", "ghcr.io/eventide/app:latest", "--ttl", "30s")
+		if code != 2 || stdout != "" ||
+			!strings.HasPrefix(stderr, "vesperctl: the API server rejected the preview environment: ") ||
+			!strings.Contains(stderr, "spec.ttl: Invalid value: \"30s\": ttl must be a duration") ||
+			!strings.Contains(stderr, "image must be pinned") {
+			t.Errorf("exit code %d, stdout %q, stderr %q; want 2 with the ttl and image errors", code, stdout, stderr)
+		}
+	})
 }
 
 // readySummary and pendingSummary are the expected -o json documents,
