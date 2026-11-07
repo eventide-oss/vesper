@@ -251,6 +251,27 @@ func TestCLI(t *testing.T) {
 		}
 	})
 
+	// The real API server accepts the ttl extend writes. pr-7 was created
+	// with a ttl of 2h.
+	t.Run("extend", func(t *testing.T) {
+		code, stdout, stderr := vesperctl(t, "extend", "pr-7", "-n", ns, "--by", "90m")
+		if code != 0 || stderr != "" ||
+			!strings.HasPrefix(stdout, `preview environment "pr-7" extended by 1h30m0s: ttl 3h30m0s, expires at `) {
+			t.Errorf("exit code %d, stdout %q, stderr %q; want 0 and the new ttl", code, stdout, stderr)
+		}
+		code, stdout, stderr = vesperctl(t, "extend", "pr-7", "-n", ns, "--by", "165h")
+		checkResult(t, code, stdout, stderr, 2, "vesperctl: cannot extend \"pr-7\" by 165h0m0s: its ttl would be "+
+			"168h30m0s, over the maximum of 168h0m0s; it can be extended by 164h30m0s at most\n")
+
+		code, stdout, stderr = vesperctl(t, "get", "pr-7", "-n", ns, "-o", "json")
+		checkResult(t, code, stdout, stderr, 0, "")
+		var got struct{ Spec struct{ TTL string } }
+		decode(t, stdout, &got)
+		if got.Spec.TTL != "3h30m0s" {
+			t.Errorf("spec.ttl = %q, want 3h30m0s", got.Spec.TTL)
+		}
+	})
+
 	t.Run("create existing", func(t *testing.T) {
 		code, stdout, stderr := vesperctl(t, "create", "pr-42", "-n", ns, "--image", "ghcr.io/eventide/app:pr-42")
 		checkResult(t, code, stdout, stderr, 1, fmt.Sprintf("vesperctl: preview environment \"pr-42\" "+

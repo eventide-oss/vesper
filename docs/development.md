@@ -296,7 +296,7 @@ A preview expires `spec.ttl` after its creation: `status.expiresAt` is
 - To extend a preview, raise its ttl; the total lifetime stays within 168h:
 
   ```sh
-  kubectl patch pe <name> -n <namespace> --type=merge -p '{"spec":{"ttl":"48h"}}'
+  vesperctl extend <name> -n <namespace> --by 24h
   ```
 
 - If the operator is stopped at the expiry, the preview expires when it starts
