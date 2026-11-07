@@ -107,6 +107,31 @@ vesperctl: the API server rejected the preview environment: spec.image: Invalid 
 applied later, for example with `kubectl apply -f`. The values are only
 checked when it is applied.
 
+### `vesperctl extend <name> --by <duration>`
+
+Extend a preview environment: raise its ttl by `--by`, such as `2h` or
+`90m`. The ttl counts from the creation of the preview, so the expiry moves by
+the same amount; the operator writes it to `status.expiresAt`.
+
+```text
+$ vesperctl extend pr-42 -n team-a --by 2h
+preview environment "pr-42" extended by 2h0m0s: ttl 26h0m0s, expires at 2026-11-08T12:00:00Z
+```
+
+A ttl cannot exceed 168h: a preview lives 7 days at most, extensions
+included (ADR-0004). vesperctl checks it before sending anything, and says by
+how much the preview can still be extended:
+
+```text
+$ vesperctl extend pr-42 --by 145h
+vesperctl: cannot extend "pr-42" by 145h0m0s: its ttl would be 169h0m0s, over the maximum of 168h0m0s; it can be extended by 144h0m0s at most
+```
+
+A preview that is being deleted, after its expiry or a `kubectl delete`,
+cannot be extended: create it again. If someone else changes the preview at
+the same time, vesperctl reads it again and extends the new ttl, so no
+extension is lost.
+
 ### `vesperctl completion bash|zsh|fish`
 
 Print a shell completion script. It completes commands, flags, the values of
@@ -165,10 +190,10 @@ vesperctl list -A -o json | jq -r '.items[] | select(.phase == "Ready") | .url'
 | --- | --- | --- |
 | `0` | success | the command did what was asked, including an empty `list` |
 | `1` | the command was valid but failed | preview not found, permission denied, cluster unreachable, no kubeconfig, Vesper not installed |
-| `2` | the command line is wrong | unknown command or flag, missing or invalid name, unknown output format or shell, a flag that is not a number or a duration, a value the API server rejects |
+| `2` | the command line is wrong | unknown command or flag, missing or invalid name, unknown output format or shell, a flag that is not a number or a duration, a value the API server rejects, an extension over 168h |
 
 A usage error (`2`) also prints the usage of the command, except when the API
-server rejected a value.
+server rejected a value or an extension goes over 168h.
 
 ## Error messages
 
@@ -182,6 +207,8 @@ what to do next when vesperctl can tell:
 | preview not found | `preview environment "pr-1" not found in namespace "team-a"` |
 | preview already exists (`create`) | `preview environment "pr-1" already exists in namespace "team-a": delete it first, or choose another name` |
 | namespace not found (`create`) | `namespace "team-a" not found: create it, or choose another with --namespace` |
+| ttl over 168h (`extend`) | `cannot extend "pr-1" by 145h0m0s: its ttl would be 169h0m0s, over the maximum of 168h0m0s; it can be extended by 144h0m0s at most` |
+| preview being deleted (`extend`) | `preview environment "pr-1" is being deleted: it cannot be extended; create it again` |
 | value rejected by the API server (`create`) | `the API server rejected the preview environment: <field>: <reason>; ...` |
 | 403 from the API server | `you are not allowed to list preview environments in namespace "team-a": ask a cluster admin for access (RBAC)` |
 | 401 from the API server | `the API server rejected your credentials: check your kubeconfig, or log in again` |

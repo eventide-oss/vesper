@@ -90,15 +90,13 @@ the `URL` column of `vesperctl list` gives a public address instead.
 ## Extend
 
 ```sh
-kubectl patch pe demo --type=merge -p '{"spec":{"ttl":"48h"}}'
+./bin/vesperctl extend demo --by 2h
 ```
 
-- `--type=merge -p '...'`: change only the fields given.
-- The ttl counts from the creation: `48h` means 48 hours after the preview
-  was created, 168h at most. A ttl shorter than the age of the preview
-  deletes it at once.
-
-`vesperctl extend` is #47.
+- `--by 2h`: how much longer the preview lives. It raises the ttl: a preview
+  of 24h becomes 26h, counted from its creation.
+- A preview lives 168h (7 days) at most, extensions included. Beyond that,
+  vesperctl refuses and says by how much it can still be extended.
 
 ## Delete
 

@@ -14,10 +14,6 @@ import (
 	vesperv1alpha1 "github.com/eventide-oss/vesper/api/v1alpha1"
 )
 
-// defaultTTL is the ttl of a preview whose spec has none. The API server
-// fills in the same default, so it only matters for objects it did not see.
-const defaultTTL = 24 * time.Hour
-
 // clock returns the clock of the reconciler: the real one unless a test set
 // another.
 func (r *PreviewEnvironmentReconciler) clock() clock.PassiveClock {
@@ -32,7 +28,7 @@ func (r *PreviewEnvironmentReconciler) clock() clock.PassiveClock {
 // precision of a timestamp in the API, so that the status written is the
 // value computed and a preview never expires early.
 func expiresAt(preview *vesperv1alpha1.PreviewEnvironment) time.Time {
-	ttl := defaultTTL
+	ttl := vesperv1alpha1.DefaultTTL
 	if preview.Spec.TTL != nil {
 		ttl = preview.Spec.TTL.Duration
 	}

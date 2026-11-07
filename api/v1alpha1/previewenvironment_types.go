@@ -17,8 +17,20 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+)
+
+const (
+	// DefaultTTL is the ttl of a preview whose spec has none. The API server
+	// fills it in (the default of spec.ttl), so it only matters for objects
+	// it did not see.
+	DefaultTTL = 24 * time.Hour
+	// MaxTTL is the longest ttl the API server accepts (ADR-0004): it bounds
+	// the whole life of a preview, extensions included.
+	MaxTTL = 168 * time.Hour
 )
 
 // PreviewEnvironmentSpec is the preview a user asks for: which image to run,
