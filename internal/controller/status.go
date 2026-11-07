@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -35,6 +36,8 @@ type condition struct {
 
 // statusUpdate is what a reconciliation writes to the status of a preview.
 type statusUpdate struct {
+	// namespace is the namespace of the preview, once it exists.
+	namespace   string
 	url         string
 	internalURL string
 	expiresAt   time.Time
@@ -86,6 +89,7 @@ func (r *PreviewEnvironmentReconciler) setStatus(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, u statusUpdate,
 ) error {
 	before := preview.DeepCopy()
+	preview.Status.Namespace = u.namespace
 	preview.Status.URL = u.url
 	preview.Status.InternalURL = u.internalURL
 	preview.Status.ExpiresAt = &metav1.Time{Time: u.expiresAt}
@@ -136,13 +140,17 @@ func (r *PreviewEnvironmentReconciler) setStatus(
 // ReconcileError, and returns it so that the reconciliation is retried.
 // Conflicts are not shown: another writer changed an object in the meantime,
 // and the retry resolves them.
+//
+// namespace is the namespace of the preview if the reconciliation got as far
+// as creating it; empty keeps the one in the status.
 func (r *PreviewEnvironmentReconciler) reportError(
-	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time, err error,
+	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time, namespace string, err error,
 ) error {
 	if apierrors.IsConflict(err) || apierrors.IsAlreadyExists(err) {
 		return err
 	}
 	statusErr := r.setStatus(ctx, preview, statusUpdate{
+		namespace:   cmp.Or(namespace, preview.Status.Namespace),
 		url:         preview.Status.URL,
 		internalURL: preview.Status.InternalURL,
 		expiresAt:   expiry,

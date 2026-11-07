@@ -117,7 +117,11 @@ func TestReconcileCreatesNamespace(t *testing.T) {
 	if !maps.Equal(ns.Labels, want) {
 		t.Errorf("namespace labels = %v, want %v", ns.Labels, want)
 	}
-	checkStatus(t, getPreview(t, r), vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	p := getPreview(t, r)
+	checkStatus(t, p, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	if p.Status.Namespace != ns.Name {
+		t.Errorf("status.namespace = %q, want %q", p.Status.Namespace, ns.Name)
+	}
 }
 
 func TestReconcileTwiceChangesNothing(t *testing.T) {
@@ -193,7 +197,12 @@ func TestReconcileLeavesForeignNamespaceUntouched(t *testing.T) {
 			if !maps.Equal(ns.Labels, labels) {
 				t.Errorf("namespace labels = %v, want them unchanged: %v", ns.Labels, labels)
 			}
-			checkStatus(t, getPreview(t, r), vesperv1alpha1.PhaseFailed, vesperv1alpha1.ReasonNamespaceConflict)
+			p := getPreview(t, r)
+			checkStatus(t, p, vesperv1alpha1.PhaseFailed, vesperv1alpha1.ReasonNamespaceConflict)
+			// The preview does not run there.
+			if p.Status.Namespace != "" {
+				t.Errorf("status.namespace = %q, want it empty", p.Status.Namespace)
+			}
 		})
 	}
 }

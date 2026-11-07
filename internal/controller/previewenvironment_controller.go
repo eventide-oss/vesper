@@ -105,7 +105,7 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 
 	update, err := r.ensureObjects(ctx, &preview, expiry)
 	if err != nil {
-		return ctrl.Result{}, r.reportError(ctx, &preview, expiry, err)
+		return ctrl.Result{}, r.reportError(ctx, &preview, expiry, update.namespace, err)
 	}
 	if err := r.setStatus(ctx, &preview, update); apierrors.IsConflict(err) {
 		// The cache had not seen the last status yet: come back once it has.
@@ -117,7 +117,8 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // ensureObjects creates or updates every object of the preview, in its
-// namespace, and returns the status that follows.
+// namespace, and returns the status that follows. On an error, the update
+// returned only holds the namespace, if it was created.
 func (r *PreviewEnvironmentReconciler) ensureObjects(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time,
 ) (statusUpdate, error) {
@@ -137,27 +138,31 @@ func (r *PreviewEnvironmentReconciler) ensureObjects(
 		}, nil
 	}
 
+	// Once the namespace exists, an error still reports it: it is where to
+	// look for the cause.
+	partial := statusUpdate{namespace: name}
 	if err := r.ensureLimits(ctx, preview, name); err != nil {
-		return statusUpdate{}, err
+		return partial, err
 	}
 	if err := r.ensureNetworkPolicy(ctx, preview, name); err != nil {
-		return statusUpdate{}, err
+		return partial, err
 	}
 	deployment, err := r.ensureDeployment(ctx, preview, name)
 	if err != nil {
-		return statusUpdate{}, err
+		return partial, err
 	}
 	if err := r.ensureService(ctx, preview, name); err != nil {
-		return statusUpdate{}, err
+		return partial, err
 	}
 	url, err := r.ensureIngress(ctx, preview, name)
 	if err != nil {
-		return statusUpdate{}, err
+		return partial, err
 	}
 	// The Deployment's status changes as its pods start: its watch brings the
 	// preview back here, and the status follows.
 	available, phase := availableCondition(deployment)
 	return statusUpdate{
+		namespace:   name,
 		url:         url,
 		internalURL: internalURL(name),
 		expiresAt:   expiry,

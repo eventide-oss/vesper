@@ -165,6 +165,14 @@ type PreviewEnvironmentStatus struct {
 	// +optional
 	Phase Phase `json:"phase,omitempty"`
 
+	// namespace is the namespace the operator created for the preview, where
+	// its application runs, for example vesper-team-a-pr-42-3f9c2a1b. It is
+	// set once the namespace exists; look there for the pods, logs and events
+	// of the preview.
+	// +optional
+	// +kubebuilder:validation:MaxLength=63
+	Namespace string `json:"namespace,omitempty"`
+
 	// url is the address where the preview can be reached.
 	// +optional
 	// +kubebuilder:validation:MaxLength=2048
@@ -209,6 +217,7 @@ type PreviewEnvironmentStatus struct {
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 // +kubebuilder:printcolumn:name="Image",type=string,JSONPath=`.spec.image`,priority=1
 // +kubebuilder:printcolumn:name="TTL",type=string,JSONPath=`.spec.ttl`,priority=1
+// +kubebuilder:printcolumn:name="Runs In",type=string,JSONPath=`.status.namespace`,priority=1
 // +kubebuilder:printcolumn:name="Internal URL",type=string,JSONPath=`.status.internalURL`,priority=1
 
 // PreviewEnvironment is a temporary environment that runs one container

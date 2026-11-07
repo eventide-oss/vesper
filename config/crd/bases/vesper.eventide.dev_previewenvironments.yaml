@@ -37,6 +37,10 @@ spec:
       name: TTL
       priority: 1
       type: string
+    - jsonPath: .status.namespace
+      name: Runs In
+      priority: 1
+      type: string
     - jsonPath: .status.internalURL
       name: Internal URL
       priority: 1
@@ -222,6 +226,14 @@ spec:
                   Service, for example http://app.vesper-team-a-pr-42-3f9c2a1b.svc.cluster.local.
                   It is not reachable from outside the cluster.
                 maxLength: 2048
+                type: string
+              namespace:
+                description: |-
+                  namespace is the namespace the operator created for the preview, where
+                  its application runs, for example vesper-team-a-pr-42-3f9c2a1b. It is
+                  set once the namespace exists; look there for the pods, logs and events
+                  of the preview.
+                maxLength: 63
                 type: string
               observedGeneration:
                 description: |-

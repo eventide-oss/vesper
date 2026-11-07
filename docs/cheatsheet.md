@@ -59,14 +59,18 @@ kubectl describe pe demo      # conditions, and at the bottom the events
 ## Find the preview namespace
 
 ```sh
-kubectl get pe demo -o wide
+./bin/vesperctl get demo       # the line "Runs in:"
+kubectl get pe demo -o wide    # the column RUNS IN
 ```
 
-`-o wide` adds columns, among them `INTERNAL URL`:
-`http://app.<preview namespace>.svc.cluster.local`. The part between `app.`
-and `.svc` is the preview namespace. (#86 will show it in `vesperctl get`.)
+To keep it in a shell variable, for the commands below:
 
-To keep it in a shell variable, as below: `NS=vesper-default-demo-02c8c86b`.
+```sh
+NS=$(kubectl get pe demo -o jsonpath='{.status.namespace}')
+```
+
+`-o jsonpath='{.status.namespace}'` prints only that field of the preview.
+It is empty until the operator has created the namespace.
 
 ## Look inside
 

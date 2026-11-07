@@ -86,6 +86,9 @@ func TestEnvtestCreatesPreviewObjects(t *testing.T) {
 	if want := "http://app." + p.previewNamespace + ".svc.cluster.local"; preview.Status.InternalURL != want {
 		t.Errorf("internalURL = %q, want %q", preview.Status.InternalURL, want)
 	}
+	if preview.Status.Namespace != p.previewNamespace {
+		t.Errorf("status.namespace = %q, want %q", preview.Status.Namespace, p.previewNamespace)
+	}
 
 	labels := map[string]string{
 		LabelManagedBy: ManagedByVesper, LabelPreviewNamespace: p.namespace, LabelPreviewName: p.name,

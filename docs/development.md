@@ -76,7 +76,9 @@ The controller is in `internal/controller`. For each `PreviewEnvironment` it:
 1. creates a dedicated namespace named `vesper-<namespace>-<name>-<hash>`
    (`NamespaceName` in `naming.go`): truncated to 63 characters, with an
    8-character hash of `<namespace>/<name>` so that two previews never share a
-   namespace. The same preview always gets the same name;
+   namespace. The same preview always gets the same name. Once it exists,
+   its name is written to `status.namespace` (`vesperctl get`, or
+   `kubectl get pe -o wide`), even if a later step fails;
 2. labels it with the preview labels (see
    [How Vesper tracks preview objects](#how-vesper-tracks-preview-objects))
    and with `pod-security.kubernetes.io/enforce=restricted`, so that the API

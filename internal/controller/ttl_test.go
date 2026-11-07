@@ -118,6 +118,9 @@ func TestReconcileExpiresPreview(t *testing.T) {
 		ready.Status != metav1.ConditionFalse || ready.Reason != vesperv1alpha1.ReasonExpired {
 		t.Errorf("status = %+v, want phase Expired with the Ready condition False/Expired", p.Status)
 	}
+	if p.Status.Namespace != nsName {
+		t.Errorf("status.namespace = %q, want it kept: %q", p.Status.Namespace, nsName)
+	}
 
 	reconcileOnce(t, r) // the deletion: the namespace goes
 	reconcileOnce(t, r) // the namespace is gone: the finalizer goes

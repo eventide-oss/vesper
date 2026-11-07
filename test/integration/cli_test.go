@@ -132,6 +132,7 @@ func TestCLI(t *testing.T) {
 		},
 		"status": map[string]any{
 			"phase":     "Ready",
+			"namespace": "vesper-pr-42-3f9c2a1b",
 			"url":       "https://pr-42.preview.example.com",
 			"expiresAt": "2099-01-01T00:00:00Z",
 			"conditions": []any{map[string]any{
@@ -199,6 +200,7 @@ func TestCLI(t *testing.T) {
 		checkLines(t, stdout,
 			`^Name:        pr-42$`,
 			`^Namespace:   `+ns+`$`,
+			`^Runs in:     vesper-pr-42-3f9c2a1b$`,
 			`^Created:     \S+Z \(\d+s ago\)$`,
 			`^Phase:       Ready$`,
 			`^Expires:     2099-01-01T00:00:00Z \(in \d+y\)$`,
@@ -310,7 +312,7 @@ func TestCLI(t *testing.T) {
 // without createdAt, which the API server sets.
 func readySummary(ns string) map[string]any {
 	return map[string]any{
-		"name": "pr-42", "namespace": ns, "phase": "Ready",
+		"name": "pr-42", "namespace": ns, "runNamespace": "vesper-pr-42-3f9c2a1b", "phase": "Ready",
 		"url": "https://pr-42.preview.example.com", "expiresAt": "2099-01-01T00:00:00Z",
 		"spec": map[string]any{
 			"image": "ghcr.io/eventide/app:pr-42", "port": 8080.0, "replicas": 1.0, "ttl": "24h", "envCount": 2.0,

@@ -17,6 +17,8 @@ import (
 // of the CRD version:
 //
 //   - name, namespace: always present.
+//   - runNamespace: the namespace the operator created for the preview, where
+//     its application runs; omitted until the operator sets it.
 //   - createdAt: creation time, RFC 3339 in UTC.
 //   - phase, url: from the status; omitted until the controller sets them.
 //   - expiresAt: when the preview is deleted, RFC 3339 in UTC; omitted until
@@ -29,14 +31,16 @@ import (
 //
 // Fields may be added in later versions; existing fields keep their meaning.
 type previewSummary struct {
-	Name       string             `json:"name"`
-	Namespace  string             `json:"namespace"`
-	CreatedAt  *time.Time         `json:"createdAt,omitempty"`
-	Phase      string             `json:"phase,omitempty"`
-	URL        string             `json:"url,omitempty"`
-	ExpiresAt  *time.Time         `json:"expiresAt,omitempty"`
-	Spec       previewSpecSummary `json:"spec"`
-	Conditions []conditionSummary `json:"conditions,omitempty"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	// RunNamespace is status.namespace.
+	RunNamespace string             `json:"runNamespace,omitempty"`
+	CreatedAt    *time.Time         `json:"createdAt,omitempty"`
+	Phase        string             `json:"phase,omitempty"`
+	URL          string             `json:"url,omitempty"`
+	ExpiresAt    *time.Time         `json:"expiresAt,omitempty"`
+	Spec         previewSpecSummary `json:"spec"`
+	Conditions   []conditionSummary `json:"conditions,omitempty"`
 }
 
 type previewSpecSummary struct {
@@ -79,11 +83,12 @@ func newPreviewList(items []unstructured.Unstructured) previewList {
 // is left empty.
 func newPreviewSummary(item unstructured.Unstructured) previewSummary {
 	s := previewSummary{
-		Name:      item.GetName(),
-		Namespace: item.GetNamespace(),
-		Phase:     stringField(item.Object, "status", "phase"),
-		URL:       stringField(item.Object, "status", "url"),
-		ExpiresAt: timeField(item.Object, "status", "expiresAt"),
+		Name:         item.GetName(),
+		Namespace:    item.GetNamespace(),
+		RunNamespace: stringField(item.Object, "status", "namespace"),
+		Phase:        stringField(item.Object, "status", "phase"),
+		URL:          stringField(item.Object, "status", "url"),
+		ExpiresAt:    timeField(item.Object, "status", "expiresAt"),
 		Spec: previewSpecSummary{
 			Image:    stringField(item.Object, "spec", "image"),
 			Port:     intField(item.Object, "spec", "port"),

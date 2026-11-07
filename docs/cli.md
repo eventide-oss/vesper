@@ -53,6 +53,7 @@ conditions.
 $ vesperctl get pr-42 -n team-a
 Name:        pr-42
 Namespace:   team-a
+Runs in:     vesper-team-a-pr-42-3f9c2a1b
 Created:     2026-11-05T10:00:00Z (120m ago)
 Phase:       Ready
 URL:         https://pr-42.preview.example.com
@@ -71,6 +72,17 @@ Conditions:
 
 `<none>` marks a value that is not set yet. Environment variables may hold
 secrets: only their number is shown, in every output format.
+
+`Runs in` is the namespace the operator created for the preview, where its
+application runs; it is set once the namespace exists. Its pods, logs and
+events are there:
+
+```sh
+NS=$(kubectl get pe pr-42 -n team-a -o jsonpath='{.status.namespace}')
+kubectl get pods -n "$NS"           # the pods of the preview
+kubectl logs -n "$NS" deploy/app    # the logs of its application; -f follows them
+kubectl events -n "$NS"             # what happened there, oldest first
+```
 
 ### `vesperctl create <name> --image <image>`
 
@@ -192,6 +204,7 @@ object.
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `name`, `namespace` | string | always present |
+| `runNamespace` | string | the namespace where the application of the preview runs; omitted until the operator creates it |
 | `createdAt` | string | creation time, RFC 3339 in UTC |
 | `phase` | string | `Pending`, `Ready`, `Failed` or `Expired`; omitted until the controller sets it |
 | `url` | string | address of the preview; omitted until set |

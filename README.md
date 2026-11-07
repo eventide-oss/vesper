@@ -174,21 +174,20 @@ kubectl get pe -w
 ./bin/vesperctl get previewenvironment-sample
 ```
 
-**7. Look inside it.** Each preview has a namespace of its own, which carries
-the name of the preview in a label. It holds a Deployment named `app`, its
+**7. Look inside it.** Each preview has a namespace of its own, shown on the
+`Runs in:` line of `vesperctl get`. It holds a Deployment named `app`, its
 pod, and a Service named `app`.
 
 ```sh
-NS=$(kubectl get ns -l vesper.eventide.dev/preview-name=previewenvironment-sample \
-  -o jsonpath='{.items[0].metadata.name}')
+NS=$(kubectl get pe previewenvironment-sample -o jsonpath='{.status.namespace}')
 kubectl get deploy,pods,svc -n "$NS"
 ```
 
 **8. Open it.** This local cluster has no ingress controller and the operator
 runs without a preview domain, so the preview has no public address, only an
-address inside the cluster (`kubectl get pe -o wide` shows it). Forward a
-local port to its Service, then open <http://localhost:8080> in a browser. To
-give previews a public address, see
+address inside the cluster (`kubectl get pe -o wide` shows it, in the
+`INTERNAL URL` column). Forward a local port to its Service, then open
+<http://localhost:8080> in a browser. To give previews a public address, see
 [Public address](docs/development.md#public-address).
 
 ```sh

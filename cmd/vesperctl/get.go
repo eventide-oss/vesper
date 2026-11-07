@@ -99,6 +99,7 @@ func printPreviewDetails(w io.Writer, s previewSummary, now time.Time) error {
 
 	field("Name", s.Name)
 	field("Namespace", s.Namespace)
+	field("Runs in", orNone(s.RunNamespace))
 	field("Created", createdAt(s.CreatedAt, now))
 	field("Phase", orNone(s.Phase))
 	field("URL", orNone(s.URL))

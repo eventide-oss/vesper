@@ -177,6 +177,10 @@ func TestReconcileReportsError(t *testing.T) {
 		t.Errorf("phase = %s, want Failed", p.Status.Phase)
 	}
 	wantCondition(t, p, "Ready", metav1.ConditionFalse, "ReconcileError")
+	// The namespace exists: the status says where to look.
+	if p.Status.Namespace != nsName {
+		t.Errorf("status.namespace = %q, want %q", p.Status.Namespace, nsName)
+	}
 	ready := meta.FindStatusCondition(p.Status.Conditions, "Ready")
 	if ready == nil || !strings.Contains(ready.Message, "was not created by Vesper") {
 		t.Errorf("Ready message = %+v, want the error", ready)

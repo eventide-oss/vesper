@@ -32,6 +32,7 @@ func readyPreview(now time.Time) *unstructured.Unstructured {
 	}
 	obj.Object["status"] = map[string]any{
 		"phase":     "Ready",
+		"namespace": "vesper-team-a-pr-42-3f9c2a1b",
 		"url":       "https://pr-42.preview.example.com",
 		"expiresAt": now.Add(22 * time.Hour).UTC().Format(time.RFC3339),
 		"conditions": []any{
@@ -63,6 +64,7 @@ func TestPrintPreviewDetails(t *testing.T) {
 			want: []string{
 				"Name:        pr-42",
 				"Namespace:   team-a",
+				"Runs in:     vesper-team-a-pr-42-3f9c2a1b",
 				"Created:     2026-11-05T10:00:00Z (120m ago)",
 				"Phase:       Ready",
 				"URL:         https://pr-42.preview.example.com",
@@ -90,6 +92,7 @@ func TestPrintPreviewDetails(t *testing.T) {
 			want: []string{
 				"Name:        pr-12",
 				"Namespace:   team-a",
+				"Runs in:     <none>",
 				"Created:     2026-11-05T11:55:00Z (5m ago)",
 				"Phase:       <none>",
 				"URL:         <none>",

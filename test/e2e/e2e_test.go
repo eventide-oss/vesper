@@ -231,7 +231,8 @@ func checkConditionsAndEvents(t *testing.T, c client.Client, preview *vesperv1al
 	})
 }
 
-// waitForReady waits until the operator reports the preview Ready.
+// waitForReady waits until the operator reports the preview Ready, with the
+// namespace where it runs.
 func waitForReady(t *testing.T, c client.Client, preview *vesperv1alpha1.PreviewEnvironment) {
 	t.Helper()
 	eventually(t, readyTimeout, func() error {
@@ -242,6 +243,10 @@ func waitForReady(t *testing.T, c client.Client, preview *vesperv1alpha1.Preview
 		ready := meta.FindStatusCondition(p.Status.Conditions, vesperv1alpha1.ConditionReady)
 		if p.Status.Phase != vesperv1alpha1.PhaseReady || ready == nil || ready.Status != metav1.ConditionTrue {
 			return fmt.Errorf("phase %q, Ready condition %+v", p.Status.Phase, ready)
+		}
+		// A ready preview tells where it runs.
+		if want := controller.NamespaceName(p.Namespace, p.Name); p.Status.Namespace != want {
+			return fmt.Errorf("status.namespace %q, want %q", p.Status.Namespace, want)
 		}
 		return nil
 	})

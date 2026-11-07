@@ -18,6 +18,7 @@ var fixedNow = time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
 const readyPreviewJSON = `{
   "name": "pr-42",
   "namespace": "team-a",
+  "runNamespace": "vesper-team-a-pr-42-3f9c2a1b",
   "createdAt": "2026-11-05T10:00:00Z",
   "phase": "Ready",
   "url": "https://pr-42.preview.example.com",
@@ -62,6 +63,7 @@ expiresAt: "2026-11-06T10:00:00Z"
 name: pr-42
 namespace: team-a
 phase: Ready
+runNamespace: vesper-team-a-pr-42-3f9c2a1b
 spec:
   envCount: 2
   image: ghcr.io/eventide/app:pr-42
