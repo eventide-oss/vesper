@@ -52,7 +52,15 @@ verify-generated: manifests generate ## Fail if the generated files differ from 
 .PHONY: test
 test: setup-envtest ## Run the unit and controller (envtest) tests.
 	KUBEBUILDER_ASSETS="$$("$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-		go test -race ./...
+		go test -race -coverprofile=cover.out ./...
+
+# The coverage of the last `make test`, per function for the lifecycle of a preview
+# (expiry, finalizer, status), and in total.
+COVER_FILES ?= internal/controller/(ttl|finalizer|status)\.go
+.PHONY: cover
+cover: ## Report the test coverage of the lifecycle code (run make test first).
+	@test -f cover.out || { echo "cover.out not found: run make test first" >&2; exit 1; }
+	@go tool cover -func=cover.out | grep -E '$(COVER_FILES)|^total:'
 
 # Builds the operator image, deploys it in a fresh kind cluster (vesper-e2e, deleted at
 # the end) and checks that a preview becomes Ready. Needs Docker and kind.

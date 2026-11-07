@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,7 +45,40 @@ var (
 	envClient client.Client
 	// envtestSkipped says why envtest is not running.
 	envtestSkipped string
+	// envClock is the clock of the controller under test: the real time,
+	// unless a test shifts it.
+	envClock = &shiftedClock{}
 )
+
+// shiftedClock is the real time plus a shift, which a test changes to move
+// the controller forward in time without waiting. The tests of the package
+// do not run in parallel, so a shift is seen by one test only; the
+// controller reads the clock from its own goroutines, hence the mutex.
+type shiftedClock struct {
+	mu    sync.Mutex
+	shift time.Duration
+}
+
+func (c *shiftedClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return time.Now().Add(c.shift)
+}
+
+func (c *shiftedClock) Since(t time.Time) time.Duration { return c.Now().Sub(t) }
+
+// shiftTime moves the clock of the controller by d for the rest of the test.
+func shiftTime(t *testing.T, d time.Duration) {
+	t.Helper()
+	envClock.mu.Lock()
+	envClock.shift = d
+	envClock.mu.Unlock()
+	t.Cleanup(func() {
+		envClock.mu.Lock()
+		envClock.shift = 0
+		envClock.mu.Unlock()
+	})
+}
 
 func TestMain(m *testing.M) {
 	os.Exit(runTests(m))
@@ -101,7 +135,8 @@ func startEnvtest() (stop func() error, err error) {
 		return stopEnv(fmt.Errorf("create manager: %w", err))
 	}
 	r := &PreviewEnvironmentReconciler{
-		Client: mgr.GetClient(), Scheme: scheme, PreviewDomain: envtestDomain, Recorder: mgr.GetEventRecorder("vesper"),
+		Client: mgr.GetClient(), Scheme: scheme, Clock: envClock, PreviewDomain: envtestDomain,
+		Recorder: mgr.GetEventRecorder("vesper"),
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return stopEnv(fmt.Errorf("set up controller: %w", err))

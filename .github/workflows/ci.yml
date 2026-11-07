@@ -41,6 +41,17 @@ jobs:
           go-version-file: go.mod
           cache: false
       - run: make test
+      # The coverage of the lifecycle code, in the log and on the summary page
+      # of the run. It is reported, not enforced.
+      - name: coverage report
+        run: |
+          make --no-print-directory cover | tee cover.txt
+          {
+            echo '### Test coverage of the lifecycle code'
+            echo '```'
+            cat cover.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   lint:
     name: lint

@@ -360,7 +360,6 @@ func TestEnvtestDeletionWaitsForNamespace(t *testing.T) {
 
 // TestEnvtestExpiresAtFollowsTTL checks status.expiresAt against the
 // creation time the API server sets: 24h by default, then the new ttl.
-// Expiry itself is covered with a fake clock in the unit tests.
 func TestEnvtestExpiresAtFollowsTTL(t *testing.T) {
 	requireEnvtest(t)
 	p := createEnvPreview(t, testSpec)
@@ -390,6 +389,79 @@ func TestEnvtestExpiresAtFollowsTTL(t *testing.T) {
 		return envClient.Update(context.Background(), &preview) // retried on a conflict
 	})
 	waitForExpiry(72 * time.Hour)
+}
+
+// TestEnvtestExtendAndShortenTTL moves the clock of the controller past the
+// expiry of a preview, without waiting. Raising the ttl then saves the
+// preview; lowering it below its age expires it at once (ADR-0004): it is
+// marked Expired and deleted, and its finalizer keeps it while its namespace
+// terminates.
+func TestEnvtestExtendAndShortenTTL(t *testing.T) {
+	requireEnvtest(t)
+	p := createEnvPreview(t, testSpec)
+	p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+
+	// 25h later, the default ttl of 24h has passed. Nothing triggers a
+	// reconciliation yet: the controller comes back at the expiry in real
+	// time, or when the spec changes.
+	shiftTime(t, 25*time.Hour)
+
+	setTTL := func(ttl time.Duration) {
+		t.Helper()
+		eventually(t, func() error {
+			var preview vesperv1alpha1.PreviewEnvironment
+			if err := p.get(&preview); err != nil {
+				return err
+			}
+			preview.Spec.TTL = &metav1.Duration{Duration: ttl}
+			return envClient.Update(context.Background(), &preview) // retried on a conflict
+		})
+	}
+
+	setTTL(48 * time.Hour)
+	preview := p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	if want := preview.CreationTimestamp.Add(48 * time.Hour); preview.Status.ExpiresAt == nil ||
+		!preview.Status.ExpiresAt.Time.Equal(want) {
+		t.Errorf("expiresAt = %v, want %s", preview.Status.ExpiresAt, want)
+	}
+	if !preview.DeletionTimestamp.IsZero() {
+		t.Fatal("extended preview is being deleted")
+	}
+
+	setTTL(24 * time.Hour)
+	eventually(t, func() error {
+		var got vesperv1alpha1.PreviewEnvironment
+		if err := p.get(&got); err != nil {
+			return err
+		}
+		if got.Status.Phase != vesperv1alpha1.PhaseExpired || got.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("phase %s, deletionTimestamp %v; want Expired and being deleted",
+				got.Status.Phase, got.DeletionTimestamp)
+		}
+		if !controllerutil.ContainsFinalizer(&got, FinalizerName) {
+			return fmt.Errorf("finalizers = %v, want %s while the namespace terminates", got.Finalizers, FinalizerName)
+		}
+		var ns corev1.Namespace
+		if err := envClient.Get(context.Background(), types.NamespacedName{Name: p.previewNamespace}, &ns); err != nil {
+			return err
+		}
+		if ns.DeletionTimestamp.IsZero() {
+			return errors.New("preview namespace not deleted yet")
+		}
+		return nil
+	})
+	eventually(t, func() error {
+		var list eventsv1.EventList
+		if err := envClient.List(context.Background(), &list, client.InNamespace(p.namespace)); err != nil {
+			return err
+		}
+		for _, e := range list.Items {
+			if e.Regarding.Name == p.name && e.Reason == vesperv1alpha1.ReasonExpired && e.Type == corev1.EventTypeNormal {
+				return nil
+			}
+		}
+		return fmt.Errorf("no Normal %s event for the preview", vesperv1alpha1.ReasonExpired)
+	})
 }
 
 // TestEnvtestCreatesIngress checks that the API server accepts the Ingress of

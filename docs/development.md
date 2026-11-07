@@ -421,6 +421,7 @@ storing the object. `make uninstall` removes the CRD and every
 
 ```sh
 make test               # unit and controller (envtest) tests, no cluster needed
+make cover              # after make test: coverage of the lifecycle code
 make test-integration   # vesperctl against the kind cluster (created if missing)
 make test-e2e           # the operator image in a fresh kind cluster (needs Docker)
 ```
@@ -445,6 +446,16 @@ pod ever runs: a test writes the Deployment status itself to make a preview
 `Terminating`: each test creates its own namespace (`team-<random>`) and
 never deletes it.
 
+The controller reads the time from `Reconciler.Clock`. The unit tests give it
+a fake clock; the envtest controller gets `envClock`, the real time plus a
+shift that a test sets with `shiftTime(t, 25*time.Hour)` and that goes back
+to zero at the end of the test. `TestEnvtestExtendAndShortenTTL` moves past
+the expiry of a preview this way, without waiting: raising the ttl saves it,
+lowering it expires it at once. Shifting the clock alone does not wake the
+controller up, which comes back at the expiry in real time: change the spec.
+The tests of the package do not run in parallel, so a shift is seen by one
+test only.
+
 `make test` downloads `setup-envtest` and the `kube-apiserver` and `etcd`
 binaries of Kubernetes `ENVTEST_K8S_VERSION` into `bin/`, and points the tests
 to them with `KUBEBUILDER_ASSETS`. A plain `go test ./...` skips the envtest
@@ -453,9 +464,20 @@ from your editor or with other flags:
 
 ```sh
 make setup-envtest
-export KUBEBUILDER_ASSETS="$(bin/setup-envtest use 1.37.0 --bin-dir bin -p path)"
+export KUBEBUILDER_ASSETS="$(bin/setup-envtest use 1.37.0 --bin-dir "$PWD/bin" -p path)"
 go test -race -run Envtest -v ./internal/controller/
 ```
+
+### Coverage
+
+`make test` writes the coverage of every package to `cover.out` (ignored by
+git). `make cover` prints, from it, the coverage of each function of the
+lifecycle of a preview (`ttl.go`, `finalizer.go`, `status.go`) and the total;
+set `COVER_FILES` to a regular expression for other files. For a page that
+shows every line, run `go tool cover -html=cover.out`.
+
+CI writes the same report to the summary page of each run (the `test` job).
+It is a report, not a gate: no minimum fails the build.
 
 ### End-to-end test
 
