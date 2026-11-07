@@ -272,6 +272,22 @@ func TestCLI(t *testing.T) {
 		}
 	})
 
+	// No operator runs here, so no finalizer delays the deletion.
+	t.Run("delete", func(t *testing.T) {
+		question := fmt.Sprintf("Delete preview environment \"pr-7\" in namespace %q, "+
+			"with everything in its preview namespace? [y/N] ", ns)
+		code, stdout, stderr := vesperctlWithInput(t, "n\n", "delete", "pr-7", "-n", ns)
+		checkResult(t, code, stdout, stderr, 1, question+"vesperctl: not deleted\n")
+		code, stdout, stderr = vesperctl(t, "get", "pr-7", "-n", ns)
+		checkResult(t, code, stdout, stderr, 0, "")
+
+		code, stdout, stderr = vesperctlWithInput(t, "y\n", "delete", "pr-7", "-n", ns)
+		checkResult(t, code, stdout, stderr, 0, question)
+		code, stdout, stderr = vesperctl(t, "delete", "pr-7", "-n", ns, "--yes")
+		checkResult(t, code, stdout, stderr, 1,
+			fmt.Sprintf("vesperctl: preview environment \"pr-7\" not found in namespace %q\n", ns))
+	})
+
 	t.Run("create existing", func(t *testing.T) {
 		code, stdout, stderr := vesperctl(t, "create", "pr-42", "-n", ns, "--image", "ghcr.io/eventide/app:pr-42")
 		checkResult(t, code, stdout, stderr, 1, fmt.Sprintf("vesperctl: preview environment \"pr-42\" "+
@@ -335,6 +351,12 @@ func checkSummary(t *testing.T, got, want map[string]any) {
 // code, stdout and stderr.
 func vesperctl(t *testing.T, args ...string) (int, string, string) {
 	t.Helper()
+	return vesperctlWithInput(t, "", args...)
+}
+
+// vesperctlWithInput runs vesperctl with stdin as its standard input.
+func vesperctlWithInput(t *testing.T, stdin string, args ...string) (int, string, string) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), waitTimeout)
 	defer cancel()
 
@@ -342,7 +364,7 @@ func vesperctl(t *testing.T, args ...string) (int, string, string) {
 	// No shell is involved: binary was built by TestMain, args come from the
 	// tests, and kubeContext was checked to be a kind context.
 	cmd := exec.CommandContext(ctx, binary, append([]string{"--context", kubeContext}, args...)...) //nolint:gosec // G204: see above
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = strings.NewReader(stdin), &stdout, &stderr
 	err := cmd.Run()
 
 	var exitErr *exec.ExitError

@@ -127,10 +127,34 @@ $ vesperctl extend pr-42 --by 145h
 vesperctl: cannot extend "pr-42" by 145h0m0s: its ttl would be 169h0m0s, over the maximum of 168h0m0s; it can be extended by 144h0m0s at most
 ```
 
-A preview that is being deleted, after its expiry or a `kubectl delete`,
+A preview that is being deleted, after its expiry or a `vesperctl delete`,
 cannot be extended: create it again. If someone else changes the preview at
 the same time, vesperctl reads it again and extends the new ttl, so no
 extension is lost.
+
+### `vesperctl delete <name>`
+
+Delete a preview environment. vesperctl first asks for a confirmation on
+stderr and reads the answer on stdin: `y` or `yes` deletes, anything else,
+an empty line included, does not and exits with `1`.
+
+```text
+$ vesperctl delete pr-42 -n team-a
+Delete preview environment "pr-42" in namespace "team-a", with everything in its preview namespace? [y/N] y
+preview environment "pr-42" is being deleted: the operator deletes its namespace, then the preview
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `-y`, `--yes` | delete without asking for confirmation |
+
+In a script, pass `--yes`: without it and with nothing to read on stdin,
+vesperctl does not delete, and says so. vesperctl returns once the deletion
+is requested: the operator deletes the preview namespace and everything in
+it, then the preview, within a few seconds. A preview that is already being
+deleted is left as it is, with exit code `0`. If the preview was deleted and
+created again between the question and the answer, the new one is not
+deleted.
 
 ### `vesperctl completion bash|zsh|fish`
 
@@ -189,7 +213,7 @@ vesperctl list -A -o json | jq -r '.items[] | select(.phase == "Ready") | .url'
 | Code | Meaning | Examples |
 | --- | --- | --- |
 | `0` | success | the command did what was asked, including an empty `list` |
-| `1` | the command was valid but failed | preview not found, permission denied, cluster unreachable, no kubeconfig, Vesper not installed |
+| `1` | the command was valid but failed | preview not found, deletion not confirmed, permission denied, cluster unreachable, no kubeconfig, Vesper not installed |
 | `2` | the command line is wrong | unknown command or flag, missing or invalid name, unknown output format or shell, a flag that is not a number or a duration, a value the API server rejects, an extension over 168h |
 
 A usage error (`2`) also prints the usage of the command, except when the API
@@ -208,6 +232,8 @@ what to do next when vesperctl can tell:
 | preview already exists (`create`) | `preview environment "pr-1" already exists in namespace "team-a": delete it first, or choose another name` |
 | namespace not found (`create`) | `namespace "team-a" not found: create it, or choose another with --namespace` |
 | ttl over 168h (`extend`) | `cannot extend "pr-1" by 145h0m0s: its ttl would be 169h0m0s, over the maximum of 168h0m0s; it can be extended by 144h0m0s at most` |
+| deletion not confirmed (`delete`) | `not deleted` |
+| no answer on stdin (`delete`) | `no answer: not deleted; pass --yes to delete without confirmation` |
 | preview being deleted (`extend`) | `preview environment "pr-1" is being deleted: it cannot be extended; create it again` |
 | value rejected by the API server (`create`) | `the API server rejected the preview environment: <field>: <reason>; ...` |
 | 403 from the API server | `you are not allowed to list preview environments in namespace "team-a": ask a cluster admin for access (RBAC)` |

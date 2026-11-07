@@ -101,11 +101,12 @@ the `URL` column of `vesperctl list` gives a public address instead.
 ## Delete
 
 ```sh
-kubectl delete pe demo
+./bin/vesperctl delete demo
 ```
 
-The operator deletes the preview namespace and everything in it, then the
-preview goes; it takes a few seconds. `vesperctl delete` is #48.
+vesperctl asks for a confirmation: type `y`. `--yes` (or `-y`) deletes without
+asking, for scripts. The operator then deletes the preview namespace and
+everything in it, then the preview goes; it takes a few seconds.
 
 ## When something is wrong
 

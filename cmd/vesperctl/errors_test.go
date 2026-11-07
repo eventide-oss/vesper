@@ -164,7 +164,9 @@ func TestExitCodeContract(t *testing.T) {
 		{name: "usage: invalid name", args: []string{"get", "PR_1"}, wantCode: exitUsage},
 		{name: "usage: unsupported shell", args: []string{"completion", "tcsh"}, wantCode: exitUsage},
 		{name: "usage: create without image", args: []string{"create", "pr-1"}, wantCode: exitUsage},
+		{name: "usage: extend without --by", args: []string{"extend", "pr-1"}, wantCode: exitUsage},
 		{name: "runtime: not found", args: []string{"get", "pr-1"}, wantCode: exitFailure},
+		{name: "runtime: delete not found", args: []string{"delete", "pr-1", "--yes"}, wantCode: exitFailure},
 		{name: "runtime: forbidden", args: []string{"list"}, client: forbidden(), wantCode: exitFailure},
 	}
 

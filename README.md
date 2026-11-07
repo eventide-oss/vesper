@@ -60,8 +60,8 @@ flowchart LR
 7. When the TTL expires, the operator deletes the namespace and everything in
    it.
 
-`vesperctl` creates, reads and extends these objects from the command line,
-and will later delete them.
+`vesperctl` creates, reads, extends and deletes these objects from the
+command line.
 
 ## Status
 
@@ -88,7 +88,8 @@ Works today:
   default), a preview is deleted, and deleting a preview deletes its namespace
   and everything in it. `vesperctl extend` raises the `ttl` to extend it.
 - `vesperctl create` creates a preview environment from flags (or prints it as
-  YAML with `--dry-run`) and `vesperctl extend` extends one; `vesperctl list`
+  YAML with `--dry-run`), `vesperctl extend` extends one and
+  `vesperctl delete` deletes one, after a confirmation; `vesperctl list`
   and `vesperctl get` read them, as a table or as JSON or YAML, with clear
   error messages and documented exit codes. See the [vesperctl reference](docs/cli.md).
 - Shell completion for bash, zsh and fish.
@@ -98,7 +99,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| HTTPS, metrics, `vesperctl delete` | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| HTTPS, metrics | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 
@@ -121,9 +122,9 @@ anything:
   namespace, Deployment and Service, then writes their status. For now you run
   it on your machine with `make run`; an in-cluster install comes later.
 
-Use `kubectl` to create, change and delete previews, as for any Kubernetes
-object. Use `vesperctl` to read them in a friendlier way; it will also create
-and delete them later.
+Use `vesperctl` to create, read, extend and delete previews (see the
+[cheat sheet](docs/cheatsheet.md)), or `kubectl`, as for any Kubernetes
+object. The steps below use `kubectl` and a manifest.
 
 **1. Build the binaries.** `bin/vesperctl` is the CLI, `bin/manager` the
 operator.

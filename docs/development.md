@@ -312,8 +312,8 @@ Every preview carries the finalizer `vesper.eventide.dev/cleanup`, added
 before anything is created for it (`finalizer.go`). A finalizer turns a
 deletion into two steps:
 
-1. `kubectl delete pe <name>` only sets the `deletionTimestamp` of the
-   preview: it is being deleted, but still there.
+1. `vesperctl delete <name>` (or `kubectl delete pe <name>`) only sets the
+   `deletionTimestamp` of the preview: it is being deleted, but still there.
 2. The operator deletes the preview namespace, which deletes the Deployment,
    the pods and the Service in it. Once the namespace is gone, which takes a
    few seconds, the operator removes its finalizer, and the API server
@@ -326,7 +326,8 @@ deletes a namespace that carries the labels of the preview: after a
 namespace fails, the finalizer stays and the operator retries.
 
 **If the operator is not running**, nothing removes the finalizer: the
-preview stays in deletion, `kubectl delete` waits, and so does
+preview stays in deletion (`vesperctl delete` returns, `kubectl delete`
+waits), and so does
 `make uninstall`, which deletes every preview with the CRD. Start the
 operator again (`make run`) and the deletion completes. To give up the
 cleanup, remove the finalizer by hand, then delete the preview namespace

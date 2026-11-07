@@ -75,7 +75,7 @@ func newRootCmd(stdout, stderr io.Writer, opts *globalOptions, factory clientFac
 	opts.addFlags(root.PersistentFlags())
 
 	root.AddCommand(newVersionCmd(), newListCmd(factory), newGetCmd(factory), newCreateCmd(factory),
-		newExtendCmd(factory), newCompletionCmd())
+		newExtendCmd(factory), newDeleteCmd(factory), newCompletionCmd())
 	return root
 }
 
