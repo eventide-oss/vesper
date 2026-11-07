@@ -462,24 +462,39 @@ go test -race -run Envtest -v ./internal/controller/
 `make test-e2e` (`hack/test-e2e.sh`) checks the operator as it runs in
 production, in a container:
 
-1. it builds the operator image (`vesper-manager:e2e`) from the `Dockerfile`;
+1. it builds `vesperctl`, and the operator image (`vesper-manager:e2e`) from
+   the `Dockerfile`;
 2. it creates a fresh kind cluster, `vesper-e2e`, and loads the image into it;
 3. it deploys the CRD, the RBAC rules and the operator with
    `config/default`, through the overlay `test/e2e/kustomization.yaml`, which
    only sets the image (`make deploy` would edit
    `config/manager/kustomization.yaml`);
-4. it runs `test/e2e` (build tag `e2e`): a preview of an unprivileged nginx
-   image must become `Ready`, with a ready pod admitted by the `restricted`
-   profile and a ready endpoint behind its Service;
+4. it runs `test/e2e` (build tag `e2e`):
+   - through the API: a preview of an unprivileged nginx image must become
+     `Ready`, with a ready pod admitted by the `restricted` profile and a ready
+     endpoint behind its Service, and its namespace must go with it; and the
+     network isolation of previews;
+   - through `vesperctl`, as a user would: `create`, `get` until `Ready`,
+     `extend` (the operator moves `expiresAt`) and `delete --yes`; and a
+     preview created with `--ttl 1m`, which the operator deletes with its
+     namespace after a minute. These two run in parallel;
 5. it deletes the cluster, even when the test fails. On failure it first
-   prints the operator logs, the previews and the recent events.
+   prints the operator logs, the previews and the recent events, and saves
+   the logs of the cluster to `_artifacts/e2e` (`E2E_ARTIFACTS_DIR`): the
+   operator logs, the previews, namespaces, pods and events, and
+   `kind export logs` (node, kubelet and container logs).
 
 The cluster has a kubeconfig of its own, in a temporary file: your kubeconfig
 and current context are not changed, and the operator you run with `make run`
 does not see the test previews. The script stops if a `vesper-e2e` cluster
 already exists. Set `E2E_KEEP_CLUSTER=1` to keep the cluster after the test;
-the script prints the `KUBECONFIG` to use. It takes about two minutes, mostly
-to build the image and create the cluster. CI runs it on every pull request.
+the script prints the `KUBECONFIG` to use. It takes about five minutes, half
+to build the images and create the cluster, half for the tests; the preview
+that expires waits its minute while the other runs. CI runs it on every pull
+request;
+when it fails, the logs are attached to the run as the artifact `e2e-logs`
+(at the bottom of the run summary page, kept 7 days). They are public, like
+the repository: the e2e cluster must never hold a secret.
 
 ### Integration tests
 

@@ -38,3 +38,6 @@ go.work.sum
 
 # Install bundle written by `make build-installer`
 /dist/
+
+# e2e logs, saved by hack/test-e2e.sh when it fails
+_artifacts/
