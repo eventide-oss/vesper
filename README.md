@@ -83,7 +83,8 @@ Works today:
 - With a preview domain configured, each preview gets a public address, such
   as `http://pr-42-team-a-3f9c2a1b.preview.example.com`, through an Ingress
   served by the ingress controller of the cluster (Traefik, HAProxy...), and
-  written to `status.url`. HTTPS is not supported yet.
+  written to `status.url`; with `--preview-tls`, over HTTPS, with a wildcard
+  certificate the ingress controller serves.
 - Previews expire: when its `ttl` has passed (1 minute to 7 days, 24 hours by
   default), a preview is deleted, and deleting a preview deletes its namespace
   and everything in it. `vesperctl extend` raises the `ttl` to extend it.
@@ -101,7 +102,7 @@ Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| HTTPS | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| A run on a real server with k3s, and its guide | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 

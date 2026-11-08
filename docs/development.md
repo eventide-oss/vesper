@@ -250,7 +250,7 @@ restricted Pod Security Standard too.
 A preview gets a public address when the operator runs with a preview domain:
 
 ```sh
-go run ./cmd --preview-domain=preview.example.com [--ingress-class=traefik]
+go run ./cmd --preview-domain=preview.example.com [--preview-tls] [--ingress-class=traefik]
 ```
 
 In the cluster, add the flags to the args of the manager Deployment
@@ -259,7 +259,8 @@ In the cluster, add the flags to the args of the manager Deployment
 
 - **The Ingress.** For each preview, the operator creates an Ingress named
   `app` that routes `<name>-<namespace>-<hash>.<domain>` to the Service `app`,
-  and writes `http://<host>` to `status.url`. The name and the namespace share
+  and writes `http://<host>` to `status.url` (`https://` with
+  `--preview-tls`, see [HTTPS](#https)). The name and the namespace share
   one DNS label (`HostName` in `naming.go`), with the hash of the preview
   namespace, so that the name stays unique and fits in 63 characters.
 - **An ingress controller.** An Ingress only describes the route: the
@@ -277,9 +278,41 @@ resolve to 127.0.0.1: with an ingress controller in kind and
 `--preview-domain=preview.localtest.me`, the URL of a preview opens through a
 port-forward to the controller.
 
-HTTPS is not supported yet (#100); Vesper uses an Ingress rather than the
-Gateway API, which may come later (#99). The NetworkPolicy of a preview lets
-the ingress controller in (see [Network isolation](#network-isolation)).
+Vesper uses an Ingress rather than the Gateway API, which may come later
+(#99). The NetworkPolicy of a preview lets the ingress controller in (see
+[Network isolation](#network-isolation)).
+
+#### HTTPS
+
+With `--preview-tls` (it requires `--preview-domain`), each Ingress gets a
+TLS section for its host that names no Secret, and `status.url` starts with
+`https://`. The ingress controller serves the host with its **default
+certificate**, which must be a wildcard for `*.<preview domain>`: it is
+configured once, and no private key is copied into preview namespaces
+([ADR-0006](adr/0006-preview-tls.md)). Without the flag, nothing changes; when
+it is removed, the TLS sections go at the next reconciliation.
+
+With Traefik, two settings, both on by default in its Helm chart and in k3s
+except the certificate:
+
+- the default certificate, in the `default` TLS store: with the Helm chart,
+  `tlsStore.default.defaultCertificate.secretName: <Secret>`, a Secret of type
+  `kubernetes.io/tls` in the namespace of Traefik;
+- TLS on the `websecure` entrypoint (`--entrypoints.websecure.http.tls=true`;
+  the chart sets it). Traefik enables TLS on a route from its entrypoint: the
+  TLS section of an Ingress only names certificates. Without this setting,
+  Traefik presents the certificate but answers 404.
+
+The wildcard certificate itself comes from cert-manager with a DNS-01
+challenge, or from any other source; the server guide (#96) describes
+cert-manager. Redirecting `http://` to `https://` is a setting of the
+controller too (with the Helm chart of Traefik,
+`ports.web.redirections.entryPoint`).
+
+This was checked on kind with Traefik v3.5 and a self-signed wildcard as its
+default certificate: the page of the preview answers over HTTPS with that
+certificate, and the preview namespace holds no Secret. The e2e test checks
+the TLS section and the URL; kind has no ingress controller there.
 
 ### Preview lifetime (TTL)
 

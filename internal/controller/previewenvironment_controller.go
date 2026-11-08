@@ -57,6 +57,10 @@ type PreviewEnvironmentReconciler struct {
 	// for example preview.example.com. Empty means no public address: no
 	// Ingress is created.
 	PreviewDomain string
+	// PreviewTLS serves the public addresses over HTTPS, with the default
+	// certificate of the ingress controller, which must cover
+	// *.<PreviewDomain> (ADR-0006). It requires PreviewDomain.
+	PreviewTLS bool
 	// IngressClassName selects the ingress controller that serves the
 	// Ingresses. Empty means the default class of the cluster.
 	IngressClassName string

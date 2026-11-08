@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -163,14 +164,14 @@ func TestPreviewLifecycle(t *testing.T) {
 		return errors.New("the service has no ready endpoint")
 	})
 
-	// The preview has a public address: an Ingress for its host. kind has no
-	// ingress controller, so the routing itself is not tested here.
+	// The preview has a public HTTPS address: an Ingress for its host. kind
+	// has no ingress controller, so the routing itself is not tested here.
 	host := controller.HostName(preview.Namespace, preview.Name, previewDomain)
 	var p vesperv1alpha1.PreviewEnvironment
 	if err := c.Get(ctx, client.ObjectKeyFromObject(preview), &p); err != nil {
 		t.Fatalf("get preview: %v", err)
 	}
-	if want := "http://" + host; p.Status.URL != want {
+	if want := "https://" + host; p.Status.URL != want {
 		t.Errorf("url = %q, want %q", p.Status.URL, want)
 	}
 	var ing networkingv1.Ingress
@@ -179,6 +180,11 @@ func TestPreviewLifecycle(t *testing.T) {
 	}
 	if len(ing.Spec.Rules) != 1 || ing.Spec.Rules[0].Host != host {
 		t.Errorf("ingress rules = %+v, want one rule for %s", ing.Spec.Rules, host)
+	}
+	// --preview-tls: TLS for the host, with the default certificate of the
+	// ingress controller (no Secret).
+	if len(ing.Spec.TLS) != 1 || !slices.Equal(ing.Spec.TLS[0].Hosts, []string{host}) || ing.Spec.TLS[0].SecretName != "" {
+		t.Errorf("ingress tls = %+v, want one entry for %s without a Secret", ing.Spec.TLS, host)
 	}
 
 	// Deleting the preview deletes its namespace first: the finalizer keeps

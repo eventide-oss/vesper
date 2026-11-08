@@ -41,7 +41,7 @@ func (r *PreviewEnvironmentReconciler) ensureIngress(
 			return fmt.Errorf("ingress %s/%s exists and was not created by Vesper for this preview",
 				namespace, IngressName)
 		}
-		mutateIngress(ing, preview, host, r.IngressClassName)
+		mutateIngress(ing, preview, host, r.IngressClassName, r.PreviewTLS)
 		return nil
 	})
 	if err != nil {
@@ -50,19 +50,31 @@ func (r *PreviewEnvironmentReconciler) ensureIngress(
 	if result != controllerutil.OperationResultNone {
 		logf.FromContext(ctx).Info("ingress "+string(result), "previewNamespace", namespace, "host", host)
 	}
-	// HTTPS is #100.
+	if r.PreviewTLS {
+		return "https://" + host, nil
+	}
 	return "http://" + host, nil
 }
 
 // mutateIngress sets the fields Vesper owns on ing: one rule from host to the
-// Service of the preview.
-func mutateIngress(ing *networkingv1.Ingress, preview *vesperv1alpha1.PreviewEnvironment, host, class string) {
+// Service of the preview and, with tls, a TLS section for host.
+//
+// The TLS section names no Secret: the ingress controller serves host with
+// its default certificate, a wildcard for the preview domain configured
+// once. No private key is copied into the preview namespace (ADR-0006).
+func mutateIngress(
+	ing *networkingv1.Ingress, preview *vesperv1alpha1.PreviewEnvironment, host, class string, tls bool,
+) {
 	setPreviewLabels(ing, preview)
 
 	// Without a class, the cluster may fill in its default one: keep it rather
 	// than erase it at every reconciliation.
 	if class != "" {
 		ing.Spec.IngressClassName = ptr.To(class)
+	}
+	ing.Spec.TLS = nil
+	if tls {
+		ing.Spec.TLS = []networkingv1.IngressTLS{{Hosts: []string{host}}}
 	}
 	ing.Spec.Rules = []networkingv1.IngressRule{{
 		Host: host,

@@ -493,6 +493,30 @@ func TestEnvtestCreatesIngress(t *testing.T) {
 	}
 }
 
+// TestEnvtestAcceptsTLSIngress checks that the API server accepts the
+// Ingress of --preview-tls, whose TLS section names no Secret, and keeps it as
+// written. The controller under test runs without TLS, so the Ingress is
+// built by mutateIngress and created directly.
+func TestEnvtestAcceptsTLSIngress(t *testing.T) {
+	requireEnvtest(t)
+	namespace := newUserNamespace(t)
+	preview := &vesperv1alpha1.PreviewEnvironment{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: "pr-42"}}
+	host := HostName(namespace, "pr-42", envtestDomain)
+	ing := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{Namespace: namespace, Name: IngressName}}
+	mutateIngress(ing, preview, host, "", true)
+	if err := envClient.Create(context.Background(), ing); err != nil {
+		t.Fatalf("create ingress with tls: %v", err)
+	}
+
+	var got networkingv1.Ingress
+	if err := envClient.Get(context.Background(), client.ObjectKeyFromObject(ing), &got); err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if want := []networkingv1.IngressTLS{{Hosts: []string{host}}}; !equality.Semantic.DeepEqual(got.Spec.TLS, want) {
+		t.Errorf("tls = %+v, want %+v", got.Spec.TLS, want)
+	}
+}
+
 // TestEnvtestCreatesLimits checks that the API server accepts the LimitRange
 // and the ResourceQuota of a preview. envtest runs no quota controller, so it
 // cannot admit pods under a quota: the e2e test checks the pods.

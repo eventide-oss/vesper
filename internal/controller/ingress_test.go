@@ -64,6 +64,45 @@ func TestReconcileCreatesIngress(t *testing.T) {
 	if !reflect.DeepEqual(ing.Spec.Rules, want) {
 		t.Errorf("rules = %+v, want %+v", ing.Spec.Rules, want)
 	}
+	if ing.Spec.TLS != nil {
+		t.Errorf("tls = %+v, want none without --preview-tls", ing.Spec.TLS)
+	}
+	if got := getPreview(t, r).Status.URL; got != "http://"+host {
+		t.Errorf("url = %q, want http://%s", got, host)
+	}
+}
+
+// TestReconcileServesHTTPS turns --preview-tls on, then off: the Ingress gets
+// a TLS section for the host of the preview, without a Secret, and the URL
+// follows; a second reconciliation writes nothing.
+func TestReconcileServesHTTPS(t *testing.T) {
+	r := newIngressReconciler(t)
+	r.PreviewTLS = true
+	reconcileOnce(t, r)
+
+	host := HostName("team-a", "pr-42", testDomain)
+	ing, err := getIngress(t, r)
+	if err != nil {
+		t.Fatalf("get ingress: %v", err)
+	}
+	if want := []networkingv1.IngressTLS{{Hosts: []string{host}}}; !reflect.DeepEqual(ing.Spec.TLS, want) {
+		t.Errorf("tls = %+v, want %+v", ing.Spec.TLS, want)
+	}
+	if got := getPreview(t, r).Status.URL; got != "https://"+host {
+		t.Errorf("url = %q, want https://%s", got, host)
+	}
+	before := ing.ResourceVersion
+	reconcileOnce(t, r)
+	if ing, _ = getIngress(t, r); ing.ResourceVersion != before {
+		t.Errorf("ingress rewritten by a second reconciliation (resourceVersion %s then %s)",
+			before, ing.ResourceVersion)
+	}
+
+	r.PreviewTLS = false
+	reconcileOnce(t, r)
+	if ing, _ = getIngress(t, r); ing.Spec.TLS != nil {
+		t.Errorf("tls = %+v after --preview-tls was removed, want none", ing.Spec.TLS)
+	}
 	if got := getPreview(t, r).Status.URL; got != "http://"+host {
 		t.Errorf("url = %q, want http://%s", got, host)
 	}

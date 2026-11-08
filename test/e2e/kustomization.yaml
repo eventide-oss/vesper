@@ -1,6 +1,6 @@
 # Deploys the operator as config/default does, with the image built by
-# hack/test-e2e.sh and loaded into the kind cluster, and a preview domain so
-# that previews get an Ingress. Kept apart so that the e2e test never edits
+# hack/test-e2e.sh and loaded into the kind cluster, and a preview domain with
+# TLS so that previews get an HTTPS Ingress. Kept apart so that the e2e test never edits
 # config/manager/kustomization.yaml, as `make deploy` does.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -12,7 +12,8 @@ images:
     newTag: e2e
 patches:
   # localtest.me and its subdomains resolve to 127.0.0.1. kind has no ingress
-  # controller: the test checks the Ingress and the URL, not the routing.
+  # controller: the test checks the Ingress and the URL, not the routing nor
+  # the certificate.
   - target:
       kind: Deployment
       name: controller-manager
@@ -20,3 +21,6 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/args/-
         value: --preview-domain=preview.localtest.me
+      - op: add
+        path: /spec/template/spec/containers/0/args/-
+        value: --preview-tls

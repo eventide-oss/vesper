@@ -68,6 +68,7 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	var previewDomain, ingressClass string
+	var previewTLS bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -91,6 +92,9 @@ func main() {
 		"Base domain of the public addresses of previews, for example preview.example.com: each preview gets an "+
 			"Ingress for <name>-<namespace>-<hash>.<domain>. A wildcard DNS record must point it to the ingress "+
 			"controller. Empty: previews have no public address.")
+	flag.BoolVar(&previewTLS, "preview-tls", false,
+		"Serve the public addresses of previews over HTTPS, with the default certificate of the ingress "+
+			"controller, which must cover *.<preview domain> (ADR-0006). Requires --preview-domain.")
 	flag.StringVar(&ingressClass, "ingress-class", "",
 		"Ingress class of the Ingresses of previews. Empty: the default class of the cluster.")
 	res := controller.DefaultResources()
@@ -115,6 +119,10 @@ func main() {
 			setupLog.Error(err, "Invalid --preview-domain")
 			os.Exit(1)
 		}
+	}
+	if previewTLS && previewDomain == "" {
+		setupLog.Error(errors.New("--preview-tls requires --preview-domain"), "Invalid --preview-tls")
+		os.Exit(1)
 	}
 	if ingressClass != "" {
 		if errs := validation.IsDNS1123Subdomain(ingressClass); len(errs) > 0 {
@@ -224,6 +232,7 @@ func main() {
 		Client:           mgr.GetClient(),
 		Scheme:           mgr.GetScheme(),
 		PreviewDomain:    previewDomain,
+		PreviewTLS:       previewTLS,
 		IngressClassName: ingressClass,
 		Resources:        &res,
 		Recorder:         mgr.GetEventRecorder("vesper"),
