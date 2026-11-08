@@ -58,8 +58,14 @@ func (r *PreviewEnvironmentReconciler) expire(
 		return err
 	}
 	// The UID precondition deletes this preview, not a new one of the same name.
-	if err := r.Delete(ctx, preview, client.Preconditions{UID: &preview.UID}); err != nil && !apierrors.IsNotFound(err) {
+	// Already gone means someone else deleted it: it is not counted.
+	err = r.Delete(ctx, preview, client.Preconditions{UID: &preview.UID})
+	switch {
+	case apierrors.IsNotFound(err):
+		return nil
+	case err != nil:
 		return fmt.Errorf("delete expired preview %s/%s: %w", preview.Namespace, preview.Name, err)
 	}
+	expiredTotal.Inc()
 	return nil
 }

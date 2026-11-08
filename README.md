@@ -93,13 +93,15 @@ Works today:
   and `vesperctl get` read them, as a table or as JSON or YAML, with clear
   error messages and documented exit codes. See the [vesperctl reference](docs/cli.md).
 - Shell completion for bash, zsh and fish.
+- Prometheus metrics: the previews per phase and the expiries, with those of
+  controller-runtime. See [Metrics](docs/metrics.md).
 - Integration tests of the CLI against a kind cluster.
 
 Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| HTTPS, metrics | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
+| HTTPS | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
 | A pull request creates its preview automatically (GitHub integration) | after v0.1 |
 

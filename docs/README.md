@@ -5,6 +5,8 @@
 - [vesperctl reference](cli.md): commands, output formats, exit codes and
   error messages.
 - [Development](development.md): tools and the local kind cluster.
+- [Metrics](metrics.md): the Prometheus metrics of the operator, and how to
+  read them.
 - [Architecture Decision Records](adr/): why we made the important decisions.
   Start from [the template](adr/0000-template.md).
   - [ADR-0001: Use Kubebuilder](adr/0001-use-kubebuilder.md)

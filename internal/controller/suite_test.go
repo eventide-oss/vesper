@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -48,6 +49,9 @@ var (
 	// envClock is the clock of the controller under test: the real time,
 	// unless a test shifts it.
 	envClock = &shiftedClock{}
+	// envMetricsURL is the metrics endpoint of the manager, served over
+	// plain HTTP on localhost.
+	envMetricsURL string
 )
 
 // shiftedClock is the real time plus a shift, which a test changes to move
@@ -127,9 +131,14 @@ func startEnvtest() (stop func() error, err error) {
 			return stopEnv(err)
 		}
 	}
+	metricsAddr, err := freeLocalAddress()
+	if err != nil {
+		return stopEnv(err)
+	}
+	envMetricsURL = "http://" + metricsAddr + "/metrics"
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme:  scheme,
-		Metrics: metricsserver.Options{BindAddress: "0"}, // no metrics server
+		Metrics: metricsserver.Options{BindAddress: metricsAddr},
 	})
 	if err != nil {
 		return stopEnv(fmt.Errorf("create manager: %w", err))
@@ -140,6 +149,9 @@ func startEnvtest() (stop func() error, err error) {
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return stopEnv(fmt.Errorf("set up controller: %w", err))
+	}
+	if err := RegisterMetrics(mgr.GetCache()); err != nil {
+		return stopEnv(fmt.Errorf("register metrics: %w", err))
 	}
 	if envClient, err = client.New(cfg, client.Options{Scheme: scheme}); err != nil {
 		return stopEnv(fmt.Errorf("create client: %w", err))
@@ -153,6 +165,16 @@ func startEnvtest() (stop func() error, err error) {
 		cancel()
 		return errors.Join(<-done, env.Stop())
 	}, nil
+}
+
+// freeLocalAddress returns a localhost address with a port that is free now.
+func freeLocalAddress() (string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return "", err
+	}
+	addr := l.Addr().String()
+	return addr, l.Close()
 }
 
 // requireEnvtest skips the test when envtest is not running. In CI it fails

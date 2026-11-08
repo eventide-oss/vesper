@@ -233,6 +233,12 @@ func main() {
 	}
 	// +kubebuilder:scaffold:builder
 
+	// vesper_previews_active, counted from the cache at each scrape.
+	if err := controller.RegisterMetrics(mgr.GetCache()); err != nil {
+		setupLog.Error(err, "Failed to register metrics")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "Failed to set up health check")
 		os.Exit(1)

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
+	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -587,5 +590,82 @@ func TestEnvtestRecordsEvents(t *testing.T) {
 			}
 		}
 		return fmt.Errorf("no NamespaceCreated event for the preview in %d events", len(list.Items))
+	})
+}
+
+// scrapeMetrics reads the metrics endpoint of the manager.
+func scrapeMetrics() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, envMetricsURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET %s: %s", envMetricsURL, resp.Status)
+	}
+	return string(body), nil
+}
+
+// metricValue returns the value of the series line, such as
+// `vesper_previews_active{phase="Pending"}`, in a scrape.
+func metricValue(scrape, series string) (float64, error) {
+	for line := range strings.Lines(scrape) {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), series+" "); ok {
+			return strconv.ParseFloat(value, 64)
+		}
+	}
+	return 0, fmt.Errorf("no series %s", series)
+}
+
+// TestEnvtestServesMetrics reads the metrics endpoint of the manager: it
+// serves the metrics of Vesper with those of controller-runtime, and the
+// gauge counts a new preview. Previews of the other tests remain, so the
+// test compares the count before and after.
+func TestEnvtestServesMetrics(t *testing.T) {
+	requireEnvtest(t)
+	const pending = `vesper_previews_active{phase="Pending"}`
+
+	before, err := scrapeMetrics()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		pending, `vesper_previews_active{phase="Unknown"}`, "vesper_previews_expired_total",
+		`controller_runtime_reconcile_total{controller="previewenvironment"`,
+	} {
+		if !strings.Contains(before, want) {
+			t.Errorf("metrics do not contain %s", want)
+		}
+	}
+	pendingBefore, err := metricValue(before, pending)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	p := createEnvPreview(t, testSpec)
+	p.waitForStatus(t, vesperv1alpha1.PhasePending, vesperv1alpha1.ReasonProvisioning)
+	eventually(t, func() error {
+		after, err := scrapeMetrics()
+		if err != nil {
+			return err
+		}
+		got, err := metricValue(after, pending)
+		if err != nil {
+			return err
+		}
+		if got != pendingBefore+1 {
+			return fmt.Errorf("%s = %v, want %v", pending, got, pendingBefore+1)
+		}
+		return nil
 	})
 }
