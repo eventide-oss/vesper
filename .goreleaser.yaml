@@ -58,6 +58,43 @@ checksum:
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
 
-# Release notes come with the release workflow (#55).
+# Release notes, from the titles of the commits since the previous tag: the
+# squash-merge titles of pull requests, in Conventional Commits. A commit goes
+# to the first group it matches.
 changelog:
-  disable: true
+  use: github
+  sort: asc
+  # The title links to its pull request (#n); no commit hash, and the GitHub
+  # login of the author, never an email address.
+  format: "{{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
+  groups:
+    - title: Breaking changes
+      regexp: '^\w+(\([^)]+\))?!:'
+      order: 0
+    - title: Features
+      regexp: '^feat(\([^)]+\))?:'
+      order: 1
+    - title: Bug fixes
+      regexp: '^fix(\([^)]+\))?:'
+      order: 2
+    - title: Other changes
+      order: 999
+
+# The release workflow (.github/workflows/release.yml) creates a draft: a
+# maintainer reads it and publishes it. A tag such as v0.1.0-rc.1 makes a
+# pre-release.
+release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: auto
+  name_template: "Vesper v{{ .Version }}"
+  footer: |
+    ## Verify the downloads
+
+    ```sh
+    shasum -a 256 --check --ignore-missing checksums.txt
+    gh attestation verify vesperctl_{{ .Version }}_linux_amd64.tar.gz --repo eventide-oss/vesper
+    ```
+
+    The second command checks that the archive was built from this
+    repository by its release workflow. See docs/release.md.
