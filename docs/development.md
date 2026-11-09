@@ -64,6 +64,13 @@ make run                    # run the manager on your machine, against the curre
 make docker-build IMG=vesper-manager:dev
 ```
 
+The version both binaries print (`vesperctl version`, and the first log line
+of the manager, `Starting Vesper`) comes from `git describe`; set it with
+`VERSION=v0.1.0`. The image builds for another architecture without
+emulation: `docker buildx build --platform linux/amd64,linux/arm64 .`
+compiles on your machine and cross-compiles. Its base images are pinned by
+digest, and Dependabot proposes their updates.
+
 `make run` uses whatever cluster your current kubectl context points to: check
 it with `kubectl config current-context` first. It reconciles every
 `PreviewEnvironment` of that cluster, and writes their status. Stop the manager
