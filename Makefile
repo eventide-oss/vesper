@@ -87,7 +87,7 @@ lint: ## Run golangci-lint (install it first, see docs/development.md).
 .PHONY: build
 build: manifests generate ## Build vesperctl and the manager into bin/.
 	go build -ldflags "$(LDFLAGS)" -o bin/vesperctl ./cmd/vesperctl
-	go build -o bin/manager ./cmd
+	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd
 
 .PHONY: run
 run: manifests generate ## Run the manager from your host against the current kubectl context.
@@ -95,24 +95,28 @@ run: manifests generate ## Run the manager from your host against the current ku
 
 .PHONY: docker-build
 docker-build: ## Build the manager image.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build --build-arg VERSION=$(VERSION) -t ${IMG} .
 
 .PHONY: docker-push
 docker-push: ## Push the manager image.
 	$(CONTAINER_TOOL) push ${IMG}
 
+# The image is set in an overlay under dist/, not in config/manager: the
+# working tree stays clean, which the release needs. IMG may carry a digest:
+# IMG=ghcr.io/eventide-oss/vesper:v0.1.0@sha256:<digest>.
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Write the CRDs and the operator deployment to dist/install.yaml.
-	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default > dist/install.yaml
+	rm -rf dist/installer && mkdir -p dist/installer
+	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- ../../config/default\n' > dist/installer/kustomization.yaml
+	cd dist/installer && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build dist/installer > dist/install.yaml
 
 .PHONY: release-check
 release-check: goreleaser ## Validate .goreleaser.yaml.
 	"$(GORELEASER)" check
 
 .PHONY: release-snapshot
-release-snapshot: goreleaser ## Build the release archives of vesperctl into dist/release/, without publishing them.
+release-snapshot: build-installer goreleaser ## Build the release assets into dist/release/, without publishing them.
 	"$(GORELEASER)" release --snapshot --clean
 
 ##@ Deployment

@@ -54,6 +54,10 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
+  # The install bundle, written by `make build-installer` with the image of
+  # the release, pinned by digest.
+  extra_files:
+    - glob: dist/install.yaml
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
@@ -88,6 +92,8 @@ release:
   replace_existing_draft: true
   prerelease: auto
   name_template: "Vesper v{{ .Version }}"
+  extra_files:
+    - glob: dist/install.yaml
   footer: |
     ## Verify the downloads
 
