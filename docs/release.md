@@ -97,13 +97,23 @@ workflow and the commit.
 
 ## Repository settings
 
-These are set once, by an admin, in **Settings**:
+These are set once, by an admin, from the **Settings** tab of the repository.
 
-- **Rules → Rulesets**: a tag ruleset on `refs/tags/v*` that restricts
-  creation, update and deletion to maintainers, so that only they can start
-  a release.
-- **General → Releases**: enable immutable releases, so that the assets of a
-  published release cannot be replaced.
+**Only maintainers can create, move or delete a version tag.** In the left
+sidebar, under "Code, planning, and automation", open **Rules**, then
+**Rulesets**. Click **New ruleset**, then **New tag ruleset**:
+
+- Ruleset name: `release tags`; enforcement status: **Active**.
+- Target tags: **Add a target**, **Include by pattern**, `v*`.
+- Tag protections: **Restrict creations**, **Restrict updates** and
+  **Restrict deletions**.
+- Bypass list: **Add bypass**, then the **Repository admin** role (and
+  **Maintain**, if maintainers have that role).
+- Click **Create**.
+
+**Published releases cannot change.** On the main Settings page (**General**),
+scroll down to the **Releases** section and check **Enable release
+immutability**. It applies to releases published after it is enabled.
 
 ## Permissions of the workflow
 
