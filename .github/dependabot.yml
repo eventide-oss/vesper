@@ -46,3 +46,18 @@ updates:
     commit-message:
       prefix: chore
       include: scope
+
+  # The base images of the Dockerfile, pinned by digest. A new Go image must
+  # match the go directive of go.mod: update both in the same pull request.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - type/chore
+      - area/ci-release
+    commit-message:
+      prefix: chore
+      include: scope

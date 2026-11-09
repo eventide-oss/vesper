@@ -1,31 +1,37 @@
-# Build the manager binary
-# Override BASE_IMAGE to build from another registry, e.g. docker.io/library/golang:1.27
-ARG BASE_IMAGE=golang:1.27
-FROM ${BASE_IMAGE} AS builder
+# The image of the operator (the manager).
+#
+# Base images are pinned by digest, so that a build always starts from the
+# same bytes; Dependabot proposes the updates. Keep the Go version in line
+# with go.mod.
+#
+# The builder runs on the platform of the build machine (BUILDPLATFORM) and
+# Go cross-compiles for the target (TARGETOS, TARGETARCH): an image for
+# another architecture builds without emulation.
+FROM --platform=$BUILDPLATFORM golang:1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS builder
 ARG TARGETOS
 ARG TARGETARCH
+# The version the manager logs when it starts; set by the release workflow
+# and by `make docker-build`.
+ARG VERSION=dev
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
+# Download the modules first: this layer stays cached until go.mod or go.sum
+# change.
 COPY go.mod go.mod
 COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
 RUN go mod download
 
-# Copy the Go source (relies on .dockerignore to filter)
+# Copy the Go source (.dockerignore keeps only the Go files, without tests).
 COPY . .
 
-# Build
-# the GOARCH has no default value to allow the binary to be built according to the host where the command
-# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
-# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
-# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
+# GOARCH has no default: with a plain `docker build`, TARGETARCH is the
+# architecture of the host, so the binary matches the image.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o manager ./cmd
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+# Distroless: no shell and no package manager, only the binary. The
+# "nonroot" variant runs as user 65532.
+FROM gcr.io/distroless/static:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
