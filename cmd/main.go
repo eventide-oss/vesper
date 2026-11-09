@@ -49,6 +49,10 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+// version is set at build time with -ldflags "-X main.version=<value>", by the
+// Dockerfile and `make build`.
+var version = "dev"
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -113,6 +117,7 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	setupLog.Info("Starting Vesper", "version", version)
 
 	if previewDomain != "" {
 		if err := controller.ValidatePreviewDomain(previewDomain); err != nil {
