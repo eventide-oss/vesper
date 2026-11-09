@@ -53,6 +53,38 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+  release-snapshot:
+    name: release-snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # GoReleaser reads the tags to find the version.
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The version pinned in the Makefile, so that CI and `make release-snapshot`
+      # run the same GoReleaser.
+      - name: read the GoReleaser version
+        id: goreleaser
+        run: echo "version=$(make --no-print-directory goreleaser-version)" >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          version: ${{ steps.goreleaser.outputs.version }}
+          args: release --snapshot --clean
+      - name: check the archives and the version of the binary
+        run: |
+          cd dist/release
+          sha256sum --check checksums.txt
+          want="vesperctl version v$(jq -r .version metadata.json) "
+          got="$(./vesperctl_linux_amd64_v1/vesperctl version)"
+          echo "$got"
+          [[ "$got" == "$want"* ]] || { echo "want a version line starting with: $want" >&2; exit 1; }
+
   lint:
     name: lint
     runs-on: ubuntu-latest
