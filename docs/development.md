@@ -587,7 +587,8 @@ CI runs them on every pull request, in the `integration` job.
 from `.goreleaser.yaml`: an archive for Linux, macOS and Windows on `amd64`
 and `arm64` (`.zip` for Windows, `.tar.gz` for the others), each with the
 binary, `LICENSE` and `README.md`, and `checksums.txt` with the SHA-256 of
-every archive. The release workflow (#55) will publish them.
+every archive. The release workflow publishes them: see
+[Releasing](release.md).
 
 ```sh
 make release-check      # validate .goreleaser.yaml
