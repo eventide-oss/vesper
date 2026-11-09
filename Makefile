@@ -107,6 +107,14 @@ build-installer: manifests generate kustomize ## Write the CRDs and the operator
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+.PHONY: release-check
+release-check: goreleaser ## Validate .goreleaser.yaml.
+	"$(GORELEASER)" check
+
+.PHONY: release-snapshot
+release-snapshot: goreleaser ## Build the release archives of vesperctl into dist/release/, without publishing them.
+	"$(GORELEASER)" release --snapshot --clean
+
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -166,10 +174,13 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest
+GORELEASER ?= $(LOCALBIN)/goreleaser
 
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
 SETUP_ENVTEST_VERSION ?= v0.25.2
+# CI installs the same version with goreleaser-action (make goreleaser-version).
+GORELEASER_VERSION ?= v2.19.0
 # Version of the kube-apiserver and etcd binaries of envtest. Keep it in line with
 # the k8s.io/api version in go.mod (v0.37.x is Kubernetes 1.37).
 ENVTEST_K8S_VERSION ?= 1.37.0
@@ -189,6 +200,15 @@ setup-envtest: $(SETUP_ENVTEST) ## Download setup-envtest and the envtest binari
 	@"$(SETUP_ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path >/dev/null
 $(SETUP_ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(SETUP_ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(SETUP_ENVTEST_VERSION))
+
+.PHONY: goreleaser
+goreleaser: $(GORELEASER) ## Download GoReleaser into bin/ if necessary (the first build takes a few minutes).
+$(GORELEASER): $(LOCALBIN)
+	$(call go-install-tool,$(GORELEASER),github.com/goreleaser/goreleaser/v2,$(GORELEASER_VERSION))
+
+.PHONY: goreleaser-version
+goreleaser-version: ## Print the pinned version of GoReleaser.
+	@echo "$(GORELEASER_VERSION)"
 
 # go-install-tool installs a Go tool at a given version as bin/<name>-<version>
 # and points the symlink bin/<name> to it.

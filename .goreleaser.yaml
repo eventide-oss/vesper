@@ -1,0 +1,63 @@
+# GoReleaser builds the release assets of vesperctl: one archive per platform
+# and a file of SHA-256 checksums. `make release-snapshot` runs it locally
+# without publishing anything. See docs/development.md.
+version: 2
+
+project_name: vesperctl
+
+# Not dist/: `make build-installer` writes dist/install.yaml, and GoReleaser
+# empties its output directory on every run.
+dist: dist/release
+
+builds:
+  - id: vesperctl
+    main: ./cmd/vesperctl
+    binary: vesperctl
+    env:
+      # A static binary that needs no C library from the system.
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      # Remove the paths of the build machine from the binary.
+      - -trimpath
+    ldflags:
+      # -s -w drop the debug tables; -X sets the version vesperctl prints.
+      - -s -w -X main.version=v{{ .Version }}
+    # Files in the archives get the date of the commit, not the time of the
+    # build, so that the same commit gives the same archives.
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: vesperctl
+    ids: [vesperctl]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # Fixed owner and dates: the archives do not depend on who builds them,
+    # or when.
+    builds_info:
+      owner: root
+      group: root
+      mtime: "{{ .CommitDate }}"
+    files:
+      - src: LICENSE
+        info: &file-info
+          owner: root
+          group: root
+          mtime: "{{ .CommitDate }}"
+      - src: README.md
+        info: *file-info
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
+
+# Release notes come with the release workflow (#55).
+changelog:
+  disable: true

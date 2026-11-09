@@ -580,3 +580,34 @@ carries the label `app.kubernetes.io/managed-by=vesper-integration-tests`.
   `make test-integration KIND_CLUSTER=other` sets it for you.
 
 CI runs them on every pull request, in the `integration` job.
+
+## Release builds
+
+[GoReleaser](https://goreleaser.com/) builds the release assets of `vesperctl`
+from `.goreleaser.yaml`: an archive for Linux, macOS and Windows on `amd64`
+and `arm64` (`.zip` for Windows, `.tar.gz` for the others), each with the
+binary, `LICENSE` and `README.md`, and `checksums.txt` with the SHA-256 of
+every archive. The release workflow (#55) will publish them.
+
+```sh
+make release-check      # validate .goreleaser.yaml
+make release-snapshot   # build everything into dist/release/, publish nothing
+```
+
+The first run installs GoReleaser into `bin/`, at the version pinned in the
+Makefile (`GORELEASER_VERSION`); compiling it takes a few minutes. A snapshot
+needs no tag: its version is the next patch after the last tag, with the
+commit, such as `v0.1.1-snapshot+abc1234`, and `vesperctl version` prints it.
+
+To check an archive you downloaded:
+
+```sh
+shasum -a 256 --check --ignore-missing checksums.txt   # sha256sum on Linux
+```
+
+The binaries are static (`CGO_ENABLED=0`) and reproducible: the same commit,
+built with the same Go version, gives the same archives byte for byte,
+whoever builds them. `-trimpath` removes the paths of the build machine, and
+the files in the archives get the date of the commit and the owner `root`.
+CI runs a snapshot on every pull request, in the `release-snapshot` job, and
+checks the checksums and the version the Linux binary prints.
