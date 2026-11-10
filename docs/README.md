@@ -1,5 +1,7 @@
 # Documentation
 
+- [Quickstart](quickstart.md): run Vesper on kind in ten minutes, from a
+  release.
 - [Cheat sheet](cheatsheet.md): the everyday commands, by task, with what
   each flag does.
 - [vesperctl reference](cli.md): commands, output formats, exit codes and

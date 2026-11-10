@@ -146,7 +146,8 @@ laptop$ kubectl -n vesper-system rollout status deploy/vesper-controller-manager
 ```
 
 Applying `install.yaml` again, to upgrade for example, resets the arguments:
-add the argument again after it.
+add the argument again after it, or keep the flags in a kustomize overlay, as
+the [quickstart](quickstart.md#configure-the-operator) describes.
 
 ## 4. Open a preview from a browser
 
