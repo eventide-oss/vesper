@@ -82,6 +82,10 @@ vet: ## Run go vet.
 lint: ## Run golangci-lint (install it first, see docs/development.md).
 	golangci-lint run
 
+.PHONY: check-license
+check-license: ## Fail if a Go file has no license header.
+	hack/check-license.sh
+
 ##@ Build
 
 .PHONY: build

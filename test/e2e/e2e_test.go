@@ -1,3 +1,6 @@
+// Copyright 2026 The Vesper Authors
+// SPDX-License-Identifier: Apache-2.0
+
 //go:build e2e
 
 // Package e2e checks the operator as it runs in production: built as an

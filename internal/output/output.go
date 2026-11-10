@@ -1,3 +1,6 @@
+// Copyright 2026 The Vesper Authors
+// SPDX-License-Identifier: Apache-2.0
+
 // Package output implements the --output flag shared by the vesperctl
 // commands, and writes values as JSON or YAML.
 //
