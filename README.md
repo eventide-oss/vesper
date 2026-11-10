@@ -1,15 +1,20 @@
 # Vesper
 
+[![CI](https://github.com/eventide-oss/vesper/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/eventide-oss/vesper/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/eventide-oss/vesper?include_prereleases&sort=semver)](https://github.com/eventide-oss/vesper/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+
 Ephemeral preview environments for Kubernetes, one per pull request.
 
 Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 `PreviewEnvironment`; Vesper creates an isolated environment for it, and
 removes it automatically when its time to live (TTL) expires.
 
-> **Status:** pre-alpha. The `PreviewEnvironment` API and the read-only CLI
-> work today, and the operator runs each preview's image in its own namespace,
-> gives it a public address and deletes it when its TTL expires.
-> See [Status](#status).
+> **Status:** release candidate. [v0.1.0-rc.2](https://github.com/eventide-oss/vesper/releases)
+> installs from one manifest: the operator runs each preview in a namespace
+> of its own, gives it a public address, over HTTPS if you want, and deletes
+> it when its TTL expires; `vesperctl` creates, follows, extends and deletes
+> previews. Try it with the [quickstart](docs/quickstart.md). See [Status](#status).
 
 ## Why
 
@@ -97,110 +102,20 @@ Works today:
   error messages and documented exit codes. See the [vesperctl reference](docs/cli.md).
 - Shell completion for bash, zsh and fish.
 - Prometheus metrics: the previews per phase and the expiries, with those of
-  controller-runtime. See [Metrics](docs/metrics.md).
-- Integration tests of the CLI against a kind cluster.
-- Tried on a real server: k3s on a VPS, previews opened over HTTPS from a
-  browser. See [Try Vesper on a server](docs/try-on-a-server.md).
+  controller-runtime. See [## Try it
 
-Not yet:
+- **[Quickstart](docs/quickstart.md)**: a kind cluster, the operator from a
+  release, a preview opened in your browser, in about ten minutes.
+- **[Try Vesper on a server](docs/try-on-a-server.md)**: k3s on a VPS, a real
+  domain and HTTPS.
+- **[Cheat sheet](docs/cheatsheet.md)**: the everyday commands, to create,
+  follow, open, debug, extend and delete a preview.
+- **From source**, to work on Vesper: [Development](docs/development.md#walkthrough-from-source).
 
-| Piece | Milestone |
-| --- | --- |
-| Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
-| A pull request creates its preview automatically (GitHub integration) | [P5 - GitHub integration (v0.2)](https://github.com/eventide-oss/vesper/milestone/6) |
+To understand how it works, read the [architecture](docs/architecture.md); to
+know what it protects against, the [security model](docs/security.md).
 
-## Try it locally
-
-Once it runs, the [cheat sheet](docs/cheatsheet.md) lists the everyday
-commands: create, follow, open, debug, extend and delete a preview.
-
-This walkthrough runs Vesper on a local [kind](https://kind.sigs.k8s.io/)
-cluster and deploys one preview. You need Go, Docker, kind and kubectl; see
-[Development](docs/development.md#prerequisites).
-
-Vesper has two parts, and both must be in place before a preview does
-anything:
-
-- **The API** (the CRD): it teaches the cluster the `PreviewEnvironment` type,
-  so it can store and validate previews. On its own, a stored preview is only
-  a record: nothing runs.
-- **The operator**: the program that watches previews and creates their
-  namespace, Deployment and Service, then writes their status. For now you run
-  it on your machine with `make run`; an in-cluster install comes later.
-
-Use `vesperctl` to create, read, extend and delete previews (see the
-[cheat sheet](docs/cheatsheet.md)), or `kubectl`, as for any Kubernetes
-object. The steps below use `kubectl` and a manifest.
-
-**1. Build the binaries.** `bin/vesperctl` is the CLI, `bin/manager` the
-operator.
-
-```sh
-make build
-./bin/vesperctl version
-```
-
-**2. Create a local cluster and select it.** Every `kubectl` command, and the
-operator, act on the cluster of the current context.
-
-```sh
-make kind-up
-kubectl config use-context kind-vesper-dev
-```
-
-**3. Install the API.** The cluster now knows the `PreviewEnvironment` type
-(short name `pe`).
-
-```sh
-make install
-kubectl get crd previewenvironments.vesper.eventide.dev
-```
-
-**4. Run the operator, in a second terminal.** It stays in the foreground and
-logs what it does; leave it running. Stop it with Ctrl-C.
-
-```sh
-make run
-```
-
-**5. Create a preview** from the sample: an unprivileged nginx image, kept
-for 24 hours.
-
-```sh
-kubectl apply -f config/samples/vesper_v1alpha1_previewenvironment.yaml
-```
-
-**6. Watch it become `Ready`.** The phase goes from `Pending` to `Ready` once
-its pod runs, usually within a minute while the image downloads. Stop
-`kubectl get -w` with Ctrl-C.
-
-```sh
-kubectl get pe -w
-./bin/vesperctl list -A
-./bin/vesperctl get previewenvironment-sample
-```
-
-**7. Look inside it.** Each preview has a namespace of its own, shown on the
-`Runs in:` line of `vesperctl get`. It holds a Deployment named `app`, its
-pod, and a Service named `app`.
-
-```sh
-NS=$(kubectl get pe previewenvironment-sample -o jsonpath='{.status.namespace}')
-kubectl get deploy,pods,svc -n "$NS"
-```
-
-**8. Open it.** This local cluster has no ingress controller and the operator
-runs without a preview domain, so the preview has no public address, only an
-address inside the cluster (`kubectl get pe -o wide` shows it, in the
-`INTERNAL URL` column). Forward a local port to its Service, then open
-<http://localhost:8080> in a browser. To give previews a public address, see
-[Public address](docs/development.md#public-address).
-
-```sh
-kubectl port-forward -n "$NS" svc/app 8080:80
-```
-
-**9. Clean up.** Delete the preview while the operator still runs: it
+** Delete the preview while the operator still runs: it
 deletes the preview namespace first, and `kubectl delete` returns once both
 are gone. Then stop the operator (Ctrl-C), and remove the API or the whole
 cluster.
