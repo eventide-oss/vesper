@@ -118,22 +118,22 @@ tunnel open.
 Install the operator from the release:
 
 ```sh
-laptop$ kubectl apply -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.1/install.yaml
+laptop$ kubectl apply -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.2/install.yaml
 laptop$ kubectl -n vesper-system rollout status deploy/vesper-controller-manager
-laptop$ kubectl -n vesper-system logs deploy/vesper-controller-manager | head -1   # Starting Vesper {"version": "v0.1.0-rc.1"}
+laptop$ kubectl -n vesper-system logs deploy/vesper-controller-manager | head -1   # Starting Vesper {"version": "v0.1.0-rc.2"}
 ```
 
 Install `vesperctl` from the same release, after checking the archive (here
 for macOS on Apple silicon; pick the archive of your platform):
 
 ```sh
-laptop$ gh release download v0.1.0-rc.1 --repo eventide-oss/vesper \
+laptop$ gh release download v0.1.0-rc.2 --repo eventide-oss/vesper \
   --pattern 'vesperctl_*_darwin_arm64.tar.gz' --pattern checksums.txt
 laptop$ shasum -a 256 --check --ignore-missing checksums.txt        # OK
-laptop$ gh attestation verify vesperctl_0.1.0-rc.1_darwin_arm64.tar.gz --repo eventide-oss/vesper
-laptop$ tar xzf vesperctl_0.1.0-rc.1_darwin_arm64.tar.gz vesperctl
+laptop$ gh attestation verify vesperctl_0.1.0-rc.2_darwin_arm64.tar.gz --repo eventide-oss/vesper
+laptop$ tar xzf vesperctl_0.1.0-rc.2_darwin_arm64.tar.gz vesperctl
 laptop$ sudo install -m 755 vesperctl /usr/local/bin/vesperctl
-laptop$ vesperctl version                                            # v0.1.0-rc.1
+laptop$ vesperctl version                                            # v0.1.0-rc.2
 ```
 
 Give the operator the domain of previews, by adding an argument to its
@@ -178,11 +178,10 @@ HTTP by default; step 7 serves previews over HTTPS.
 
 ## 5. Run the lifecycle
 
-Change the image: the new version rolls out, and the old pod stops only once
-the new one runs.
+Change the image of `demo`: the new version rolls out, and the old pod stops
+only once the new one runs.
 
 ```sh
-laptop$ vesperctl create demo --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --ttl 2h
 laptop$ kubectl patch pe demo --type=merge -p '{"spec":{"image":"nginxinc/nginx-unprivileged:1.28-alpine"}}'
 laptop$ curl -sI http://demo-default-<hash>.preview.example.com | grep -i '^server'   # nginx/1.28.x
 ```
@@ -274,3 +273,136 @@ endpoint answers 401, with the token of a ServiceAccount bound to
 `vesper-metrics-reader` it serves `vesper_previews_active` and
 `vesper_previews_expired_total`. The counter starts at zero each time the
 operator starts.
+
+## 7. Serve previews over HTTPS
+
+Vesper serves previews over HTTPS with the default certificate of the ingress
+controller ([ADR-0006](adr/0006-preview-tls.md)): one wildcard certificate for
+`*.preview.example.com`, from Let's Encrypt. Let's Encrypt issues wildcards
+only through the DNS-01 challenge: [cert-manager](https://cert-manager.io/)
+proves that you control the domain by writing a TXT record through the API of
+your DNS provider, and renews the certificate before it expires. This step
+uses Cloudflare; cert-manager supports other providers.
+
+**Create an API token** at your DNS provider. With Cloudflare: permissions
+Zone · DNS · Edit and Zone · Zone · Read, restricted to the zone of your
+domain, and, if you can, to the address of the server. The token is shown
+once: keep it in a password manager.
+
+Install cert-manager, pinned:
+
+```sh
+laptop$ kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml
+laptop$ kubectl -n cert-manager rollout status deploy/cert-manager-webhook
+```
+
+Store the token in a Secret without showing it or writing it to a file
+(`read -s` reads without echo; the syntax is the one of zsh, use
+`read -rs CF_TOKEN` in bash):
+
+```sh
+laptop$ read -s "CF_TOKEN?Cloudflare token: "
+laptop$ printf %s "$CF_TOKEN" | kubectl create secret generic cloudflare-api-token -n cert-manager --from-file=api-token=/dev/stdin
+laptop$ unset CF_TOKEN
+```
+
+Try the staging environment of Let's Encrypt first: its certificates are not
+trusted by browsers, but it does not apply the rate limits of production, so
+mistakes cost nothing.
+
+```sh
+laptop$ kubectl apply -f - <<'EOF2'
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    privateKeySecretRef:
+      name: letsencrypt-staging-account
+    solvers:
+    - dns01:
+        cloudflare:
+          apiTokenSecretRef:
+            name: cloudflare-api-token
+            key: api-token
+EOF2
+laptop$ kubectl get clusterissuer letsencrypt-staging      # READY True
+```
+
+Ask for the wildcard certificate, in the namespace of Traefik
+(`kube-system` in k3s), and make it the default certificate of Traefik:
+
+```sh
+laptop$ kubectl apply -f - <<'EOF2'
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-preview
+  namespace: kube-system
+spec:
+  secretName: wildcard-preview-tls
+  dnsNames:
+  - "*.preview.example.com"
+  issuerRef:
+    kind: ClusterIssuer
+    name: letsencrypt-staging
+---
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system
+spec:
+  defaultCertificate:
+    secretName: wildcard-preview-tls
+EOF2
+laptop$ kubectl get certificate -n kube-system -w      # READY True after one to three minutes
+laptop$ echo | openssl s_client -connect test.preview.example.com:443 -servername test.preview.example.com 2>/dev/null \
+  | openssl x509 -noout -subject -issuer               # CN=*.preview.example.com, issuer (STAGING) ...
+```
+
+k3s configures Traefik with TLS on its `websecure` entrypoint, which Vesper
+needs (see [HTTPS](development.md#https)); with another Traefik install, set
+it as described there.
+
+Then switch to production: create the same ClusterIssuer named
+`letsencrypt-prod` with the server
+`https://acme-v02.api.letsencrypt.org/directory` and the account Secret
+`letsencrypt-prod-account`, and point the certificate to it:
+
+```sh
+laptop$ kubectl patch certificate wildcard-preview -n kube-system --type=merge \
+  -p '{"spec":{"issuerRef":{"name":"letsencrypt-prod"}}}'
+laptop$ kubectl get certificate -n kube-system -w      # READY True again
+```
+
+The issuer is now `Let's Encrypt`, without `(STAGING)`. Turn on HTTPS in the
+operator, and open a preview:
+
+```sh
+laptop$ kubectl -n vesper-system patch deployment vesper-controller-manager --type=json \
+  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--preview-tls"}]'
+laptop$ vesperctl create secure --image nginxinc/nginx-unprivileged:1.28-alpine --port 8080 --ttl 2h
+laptop$ curl -sI "$(kubectl get pe secure -o jsonpath='{.status.url}')" | head -1    # HTTP/2 200
+laptop$ kubectl get secrets -n "$(kubectl get pe secure -o jsonpath='{.status.namespace}')"   # No resources found
+```
+
+Browsers show the padlock. The preview namespace holds no Secret: the
+certificate and its key stay with Traefik.
+
+## 8. Clean up
+
+Delete the previews you created. To remove everything:
+
+```sh
+laptop$ kubectl delete -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.2/install.yaml
+laptop$ kubectl delete certificate wildcard-preview -n kube-system
+laptop$ kubectl delete tlsstore default -n kube-system
+laptop$ kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml
+server$ /usr/local/bin/k3s-uninstall.sh
+```
+
+Then remove the `*.preview` DNS record, revoke the API token at your DNS
+provider, and delete `~/.kube/vps.yaml`.

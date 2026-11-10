@@ -97,14 +97,15 @@ Works today:
 - Prometheus metrics: the previews per phase and the expiries, with those of
   controller-runtime. See [Metrics](docs/metrics.md).
 - Integration tests of the CLI against a kind cluster.
+- Tried on a real server: k3s on a VPS, previews opened over HTTPS from a
+  browser. See [Try Vesper on a server](docs/try-on-a-server.md).
 
 Not yet:
 
 | Piece | Milestone |
 | --- | --- |
-| A run on a real server with k3s, and its guide | [P3 - Lifecycle and hardening](https://github.com/eventide-oss/vesper/milestone/4) |
 | Install bundle, quickstart and the v0.1.0 release | [P4 - Release v0.1](https://github.com/eventide-oss/vesper/milestone/5) |
-| A pull request creates its preview automatically (GitHub integration) | after v0.1 |
+| A pull request creates its preview automatically (GitHub integration) | [P5 - GitHub integration (v0.2)](https://github.com/eventide-oss/vesper/milestone/6) |
 
 ## Try it locally
 
