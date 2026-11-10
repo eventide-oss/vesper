@@ -211,3 +211,66 @@ them:
 laptop$ vesperctl create bad1 --image nginxinc/nginx-unprivileged:latest --port 8080   # refused: not pinned
 laptop$ vesperctl create bad2 --image nginxinc/nginx-unprivileged:1.27-alpine --ttl 30s  # refused: under 1m
 ```
+
+## 6. Check the isolation of previews
+
+Create two previews, and keep the names of their namespaces:
+
+```sh
+laptop$ vesperctl create alice --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --ttl 1h
+laptop$ vesperctl create bob --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --ttl 1h
+laptop$ A=$(kubectl get pe alice -o jsonpath='{.status.namespace}')
+laptop$ B=$(kubectl get pe bob -o jsonpath='{.status.namespace}')
+laptop$ IP=<VPS_IP>
+```
+
+From the pod of `alice`, try to reach the other preview, the Kubernetes API,
+the kubelet through the public address of the server, and the internet:
+
+```sh
+laptop$ kubectl exec -n "$A" deploy/app -- wget -qO- -T 3 "http://app.$B"                     # refused
+laptop$ kubectl exec -n "$A" deploy/app -- wget -qO- -T 3 https://kubernetes.default           # refused
+laptop$ kubectl exec -n "$A" deploy/app -- wget -qO- -T 3 "http://$IP:10250"                  # refused
+laptop$ kubectl exec -n "$A" deploy/app -- wget -qO- -T 3 http://example.com >/dev/null; echo $?   # 0
+```
+
+A refused connection or a timeout means the NetworkPolicy blocked it. An HTTP
+error such as 401 or 400 means the connection got through: before
+v0.1.0-rc.2, the API server and the kubelet were reached through the public
+address of the node ([GHSA-m437-fj8p-6x8h](https://github.com/eventide-oss/vesper/security/advisories/GHSA-m437-fj8p-6x8h)).
+
+Check the bounds of a preview. The API server refuses more than 5 replicas;
+the ResourceQuota of the preview namespace refuses any pod over its budget,
+even one created by hand:
+
+```sh
+laptop$ vesperctl create big --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --replicas 6   # refused: at most 5
+laptop$ vesperctl create big --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --replicas 5
+laptop$ G=$(kubectl get pe big -o jsonpath='{.status.namespace}')
+laptop$ kubectl describe resourcequota -n "$G"     # pods 5/10, limits.memory 2560Mi/4Gi, no NodePort or LoadBalancer
+laptop$ kubectl apply -n "$G" -f - <<'YAML'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: over-budget
+spec:
+  containers:
+  - name: app
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    resources:
+      limits: {memory: 5Gi, cpu: 500m}
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      capabilities: {drop: ["ALL"]}
+      seccompProfile: {type: RuntimeDefault}
+YAML
+# Error from server (Forbidden): ... exceeded quota: preview, requested: limits.memory=5Gi ...
+laptop$ vesperctl delete big --yes
+```
+
+Read the metrics, as [Metrics](metrics.md) describes: without a token the
+endpoint answers 401, with the token of a ServiceAccount bound to
+`vesper-metrics-reader` it serves `vesper_previews_active` and
+`vesper_previews_expired_total`. The counter starts at zero each time the
+operator starts.
