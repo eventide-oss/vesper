@@ -42,8 +42,8 @@ and nothing on stdout. JSON and YAML always print a document:
 
 ### `vesperctl get <name>`
 
-Show one preview environment: status, expiry, a summary of its spec and its
-conditions.
+Show one preview environment: status, expiry, a summary of its spec, its
+conditions and its latest events.
 
 | Flag | Meaning |
 | --- | --- |
@@ -68,10 +68,22 @@ Conditions:
   TYPE          STATUS   REASON            AGE   MESSAGE
   Available     True     DeploymentReady   90m   1/1 replicas available
   Progressing   False    Complete          90m   <none>
+Events:
+  TYPE     REASON         AGE   MESSAGE
+  Normal   Provisioning   92m   creating the objects of the preview
+  Normal   Ready          90m   1/1 replicas available
 ```
 
 `<none>` marks a value that is not set yet. Environment variables may hold
 secrets: only their number is shown, in every output format.
+
+`Events` lists the last 10 events the operator recorded about the preview,
+oldest first, as `kubectl describe` does; an event repeated by the API server
+shows its count, such as `5m (x3)`. The API server keeps events for about an
+hour. Only the events of this preview are shown, not those of an earlier
+preview with the same name. If you may read previews but not events, `get`
+says `<cannot list events: forbidden>` and succeeds. The JSON and YAML output
+holds the preview only, not its events.
 
 `Runs in` is the namespace the operator created for the preview, where its
 application runs; it is set once the namespace exists. Its pods, logs and

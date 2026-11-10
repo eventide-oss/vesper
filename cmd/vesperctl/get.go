@@ -26,8 +26,9 @@ func newGetCmd(factory clientFactory) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "get <name>",
 		Short: "Show the details of a preview environment",
-		Long: "Show the spec summary, status, conditions and expiry of one preview\n" +
-			"environment in the current namespace.",
+		Long: "Show the spec summary, status, conditions, expiry and latest events of\n" +
+			"one preview environment in the current namespace. The JSON and YAML\n" +
+			"output holds the preview only, not its events.",
 		Args: nameArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGet(cmd, factory, args[0], format)
@@ -70,7 +71,12 @@ func runGet(cmd *cobra.Command, factory clientFactory, name string, format outpu
 	if format != output.Table {
 		return output.Write(cmd.OutOrStdout(), format, summary)
 	}
-	return printPreviewDetails(cmd.OutOrStdout(), summary, time.Now())
+	now := time.Now()
+	if err := printPreviewDetails(cmd.OutOrStdout(), summary, now); err != nil {
+		return err
+	}
+	events, err := previewEvents(cmd.Context(), client, namespace, item.GetUID())
+	return printEvents(cmd.OutOrStdout(), events, err, now)
 }
 
 // getError explains the errors a user can act on. Both a missing object and

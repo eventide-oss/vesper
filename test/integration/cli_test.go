@@ -213,6 +213,40 @@ func TestCLI(t *testing.T) {
 		)
 	})
 
+	// An event written through events.k8s.io/v1, as the operator writes them,
+	// shows in the table of get, read back through the core Event API.
+	t.Run("get events", func(t *testing.T) {
+		preview, err := client.Resource(previewGVR).Namespace(ns).Get(t.Context(), "pr-42", metav1.GetOptions{})
+		if err != nil {
+			t.Fatalf("get pr-42: %v", err)
+		}
+		event := &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "events.k8s.io/v1", "kind": "Event",
+			"metadata":   map[string]any{"name": "pr-42.integration", "namespace": ns},
+			"eventTime":  time.Now().UTC().Format("2006-01-02T15:04:05.000000Z07:00"),
+			"regarding": map[string]any{
+				"apiVersion": "vesper.eventide.dev/v1alpha1", "kind": "PreviewEnvironment",
+				"namespace": ns, "name": "pr-42", "uid": string(preview.GetUID()),
+			},
+			"type": "Normal", "reason": "Ready", "action": "Reconcile",
+			"note":                "integration test event",
+			"reportingController": "vesper.eventide.dev/integration-tests",
+			"reportingInstance":   "integration-tests",
+		}}
+		eventsV1 := schema.GroupVersionResource{Group: "events.k8s.io", Version: "v1", Resource: "events"}
+		if _, err := client.Resource(eventsV1).Namespace(ns).Create(t.Context(), event, metav1.CreateOptions{}); err != nil {
+			t.Fatalf("create event: %v", err)
+		}
+
+		code, stdout, stderr := vesperctl(t, "get", "pr-42", "-n", ns)
+		checkResult(t, code, stdout, stderr, 0, "")
+		checkLines(t, stdout,
+			`^Events:$`,
+			`^\s+TYPE\s+REASON\s+AGE\s+MESSAGE$`,
+			`^\s+Normal\s+Ready\s+\d+s\s+integration test event$`,
+		)
+	})
+
 	t.Run("get json", func(t *testing.T) {
 		code, stdout, stderr := vesperctl(t, "get", "pr-42", "-n", ns, "-o", "json")
 		checkResult(t, code, stdout, stderr, 0, "")

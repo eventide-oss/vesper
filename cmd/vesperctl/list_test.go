@@ -48,6 +48,7 @@ func (f *fakeFactory) Namespace() (string, error) {
 func newFakeClient(objs ...runtime.Object) *dynamicfake.FakeDynamicClient {
 	listKinds := map[schema.GroupVersionResource]string{
 		previewEnvironmentGVR: "PreviewEnvironmentList",
+		eventsGVR:             "EventList",
 	}
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds, objs...)
 }
