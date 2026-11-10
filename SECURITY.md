@@ -42,6 +42,9 @@ unless you prefer to stay anonymous.
 
 ## Scope
 
+What Vesper guarantees, and what it does not, is described in the
+[security model](docs/security.md).
+
 In scope: the operator, the CRD and its validation, `vesperctl`, the manifests
 and images we publish, and our CI and release pipeline.
 

@@ -7,6 +7,8 @@
 - [Development](development.md): tools and the local kind cluster.
 - [Try Vesper on a server](try-on-a-server.md): k3s on a VPS, a wildcard DNS
   record and HTTPS with cert-manager, step by step.
+- [Security model](security.md): what Vesper protects against, its known
+  limits, and a hardening checklist.
 - [Metrics](metrics.md): the Prometheus metrics of the operator, and how to
   read them.
 - [Releasing](release.md): how to cut a release, and how to verify one.

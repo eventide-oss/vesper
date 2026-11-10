@@ -28,6 +28,8 @@ pull request #57  ->  https://pr-57.preview.example.com
 
 Each preview is isolated from the others, and it is deleted when its TTL
 expires (for example after 24 hours), so it does not use the cluster forever.
+A namespace is a soft boundary, though: the [security model](docs/security.md)
+says what Vesper protects against, and what it does not.
 
 ## How it works
 
