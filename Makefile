@@ -34,13 +34,19 @@ manifests: controller-gen ## Generate the CRD and RBAC manifests from the Go typ
 generate: controller-gen ## Generate the DeepCopy methods of the API types.
 	"$(CONTROLLER_GEN)" object:headerFile="hack/boilerplate.go.txt",year=$(YEAR) paths="./..."
 
-# Files controller-gen writes: the CRD and RBAC manifests, and the DeepCopy methods.
-GENERATED_PATHS := config/crd/bases config/rbac/role.yaml ':(glob)**/zz_generated.*.go'
+.PHONY: docs-reference
+docs-reference: crd-ref-docs ## Generate docs/crd-reference.md from the Go types of the API.
+	"$(CRD_REF_DOCS)" --source-path=api --config=hack/crd-ref-docs/config.yaml \
+		--renderer=markdown --output-path=docs/crd-reference.md --log-level=WARN
+
+# Files the generators write: the CRD and RBAC manifests, the DeepCopy
+# methods, and the reference of the API.
+GENERATED_PATHS := config/crd/bases config/rbac/role.yaml ':(glob)**/zz_generated.*.go' docs/crd-reference.md
 
 .PHONY: verify-generated
-verify-generated: manifests generate ## Fail if the generated files differ from the committed ones.
+verify-generated: manifests generate docs-reference ## Fail if the generated files differ from the committed ones.
 	@if [ -n "$$(git status --porcelain -- $(GENERATED_PATHS))" ]; then \
-		echo "Generated files are out of date: run 'make manifests generate' and commit the result." >&2; \
+		echo "Generated files are out of date: run 'make manifests generate docs-reference' and commit the result." >&2; \
 		git status --short -- $(GENERATED_PATHS) >&2; \
 		git --no-pager diff -- $(GENERATED_PATHS) >&2; \
 		exit 1; \
@@ -179,12 +185,14 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 SETUP_ENVTEST ?= $(LOCALBIN)/setup-envtest
 GORELEASER ?= $(LOCALBIN)/goreleaser
+CRD_REF_DOCS ?= $(LOCALBIN)/crd-ref-docs
 
 KUSTOMIZE_VERSION ?= v5.8.1
 CONTROLLER_TOOLS_VERSION ?= v0.22.0
 SETUP_ENVTEST_VERSION ?= v0.25.2
 # CI installs the same version with goreleaser-action (make goreleaser-version).
 GORELEASER_VERSION ?= v2.19.0
+CRD_REF_DOCS_VERSION ?= v0.3.0
 # Version of the kube-apiserver and etcd binaries of envtest. Keep it in line with
 # the k8s.io/api version in go.mod (v0.37.x is Kubernetes 1.37).
 ENVTEST_K8S_VERSION ?= 1.37.0
@@ -209,6 +217,11 @@ $(SETUP_ENVTEST): $(LOCALBIN)
 goreleaser: $(GORELEASER) ## Download GoReleaser into bin/ if necessary (the first build takes a few minutes).
 $(GORELEASER): $(LOCALBIN)
 	$(call go-install-tool,$(GORELEASER),github.com/goreleaser/goreleaser/v2,$(GORELEASER_VERSION))
+
+.PHONY: crd-ref-docs
+crd-ref-docs: $(CRD_REF_DOCS) ## Download crd-ref-docs into bin/ if necessary.
+$(CRD_REF_DOCS): $(LOCALBIN)
+	$(call go-install-tool,$(CRD_REF_DOCS),github.com/elastic/crd-ref-docs,$(CRD_REF_DOCS_VERSION))
 
 .PHONY: goreleaser-version
 goreleaser-version: ## Print the pinned version of GoReleaser.

@@ -448,6 +448,7 @@ After a change, regenerate and commit the generated files:
 
 ```sh
 make manifests generate   # CRD, RBAC role (from the +kubebuilder:rbac markers) and DeepCopy methods
+make docs-reference       # docs/crd-reference.md, from the same types and comments
 make verify-generated     # what CI runs: fails if a generated file is not committed
 ```
 

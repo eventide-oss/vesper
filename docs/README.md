@@ -4,6 +4,10 @@
   each flag does.
 - [vesperctl reference](cli.md): commands, output formats, exit codes and
   error messages.
+- [Architecture](architecture.md): the pieces of Vesper, a reconciliation
+  step by step, and the life of a preview.
+- [CRD reference](crd-reference.md): every field of `PreviewEnvironment`,
+  generated from the Go types (`make docs-reference`).
 - [Development](development.md): tools and the local kind cluster.
 - [Try Vesper on a server](try-on-a-server.md): k3s on a VPS, a wildcard DNS
   record and HTTPS with cert-manager, step by step.

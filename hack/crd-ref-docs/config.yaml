@@ -1,0 +1,10 @@
+# Configuration of crd-ref-docs, which writes docs/crd-reference.md from the
+# Go types of api/ (`make docs-reference`).
+processor:
+  # Generated deepcopy functions and the list types are not part of the API.
+  ignoreTypes:
+    - "List$"
+  ignoreFields:
+    - "TypeMeta$"
+render:
+  kubernetesVersion: "1.37"
