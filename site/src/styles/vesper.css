@@ -1,0 +1,41 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+
+/* The Vesper palette (docs/brand.md) on the variables of Starlight. Dark is
+   the night sky; light keeps the same hues on a warm background. */
+
+:root {
+	--sl-font: 'Inter Variable', system-ui, sans-serif;
+	--sl-font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+	/* Gold is the accent: the star, links, the Ready phase. */
+	--sl-color-accent-low: #2e2150;
+	--sl-color-accent: #e8c46a;
+	--sl-color-accent-high: #ffe29a;
+
+	/* Cream to Night. */
+	--sl-color-white: #fff4d6;
+	--sl-color-gray-1: #f2e9d3;
+	--sl-color-gray-2: #cfc7b8;
+	--sl-color-gray-3: #9a93a8;
+	--sl-color-gray-4: #5e5878;
+	--sl-color-gray-5: #2e2a48;
+	--sl-color-gray-6: #14142e;
+	--sl-color-black: #101026;
+}
+
+:root[data-theme='light'] {
+	/* Violet links on a warm background: Gold is too pale to read on it. */
+	--sl-color-accent-low: #eadff7;
+	--sl-color-accent: #6b3fa0;
+	--sl-color-accent-high: #4a2670;
+
+	--sl-color-white: #101026;
+	--sl-color-gray-1: #14142e;
+	--sl-color-gray-2: #2e2a48;
+	--sl-color-gray-3: #5e5878;
+	--sl-color-gray-4: #9a93a8;
+	--sl-color-gray-5: #d9d2c4;
+	--sl-color-gray-6: #f4eedf;
+	--sl-color-gray-7: #faf6ec;
+	--sl-color-black: #fffdf8;
+}

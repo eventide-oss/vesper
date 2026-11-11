@@ -1,0 +1,10 @@
+# Generated from docs/ by scripts/sync-docs.mjs: edit docs/, not these.
+src/content/docs/
+public/images/
+public/favicon.svg
+src/assets/
+
+# Build output and dependencies.
+dist/
+.astro/
+node_modules/

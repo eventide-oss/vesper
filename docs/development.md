@@ -739,3 +739,28 @@ whoever builds them. `-trimpath` removes the paths of the build machine, and
 the files in the archives get the date of the commit and the owner `root`.
 CI runs a snapshot on every pull request, in the `release-snapshot` job, and
 checks the checksums and the version the Linux binary prints.
+
+## Documentation site
+
+The pages of `docs/` are also published as a site, at
+<https://eventide-oss.github.io/vesper/>. `docs/` stays the only source: the
+site in `site/` is built with [Astro Starlight](https://starlight.astro.build/),
+and `site/scripts/sync-docs.mjs` translates `docs/` for it at each build. The
+first heading of a page becomes its title, links between pages become links of
+the site, and links to the rest of the repository point to GitHub. Write the
+docs as before, for GitHub; the site follows.
+
+Run it locally, with Node 22.23.4 or later:
+
+```sh
+cd site
+npm ci --ignore-scripts
+npm run dev      # http://localhost:4321/vesper/, reloads on change of site/
+npm run build    # the site in site/dist, then a check of its internal links
+```
+
+`npm run dev` translates `docs/` when it starts: run it again after editing
+`docs/`. A new page of `docs/` must also be added to the `sidebar` of
+`site/astro.config.mjs`. The workflow `.github/workflows/docs.yml` builds the
+site on every pull request that touches `docs/` or `site/`, and publishes it
+from `main`.
