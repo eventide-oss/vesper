@@ -20,6 +20,8 @@
 - [Releasing](release.md): how to cut a release, and how to verify one.
 - [Acceptance of v0.1](acceptance-v0.1.md): v0.1 checked against the
   criteria of the framing letter, and how to run the check again.
+- [Brand](brand.md): the logo, the colors, the colors of the phases and the
+  rules of use.
 - [Architecture Decision Records](adr/): why we made the important decisions.
   Start from [the template](adr/0000-template.md).
   - [ADR-0001: Use Kubebuilder](adr/0001-use-kubebuilder.md)

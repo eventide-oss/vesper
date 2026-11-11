@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Vesper">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14142E"/>
+      <stop offset="0.6" stop-color="#4A2670"/>
+      <stop offset="1" stop-color="#F2784B"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFE29A" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#FFE29A" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="tile"><rect width="512" height="512" rx="112"/></clipPath>
+  </defs>
+  <g clip-path="url(#tile)">
+    <rect width="512" height="512" fill="url(#sky)"/>
+    <path d="M 72 392 A 184 184 0 0 1 440 392" fill="none" stroke="#FFE29A" stroke-opacity="0.55" stroke-width="6" stroke-linecap="round" stroke-dasharray="2 20"/>
+    <circle cx="256" cy="208" r="150" fill="url(#glow)"/>
+    <path d="M 256 112 C 263.68 184.96 279.04 200.32 352 208 C 279.04 215.68 263.68 231.04 256 304 C 248.32 231.04 232.96 215.68 160 208 C 232.96 200.32 248.32 184.96 256 112 Z" fill="#FFF4D6"/>
+    <rect x="56" y="389" width="400" height="6" rx="3" fill="#FFE29A" fill-opacity="0.85"/>
+    <rect x="136" y="414" width="240" height="6" rx="3" fill="#F2784B" fill-opacity="0.55"/>
+    <rect x="196" y="439" width="120" height="6" rx="3" fill="#F2784B" fill-opacity="0.3"/>
+  </g>
+</svg>
