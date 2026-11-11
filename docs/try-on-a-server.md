@@ -118,22 +118,22 @@ tunnel open.
 Install the operator from the release:
 
 ```sh
-laptop$ kubectl apply -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.2/install.yaml
+laptop$ kubectl apply -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0/install.yaml
 laptop$ kubectl -n vesper-system rollout status deploy/vesper-controller-manager
-laptop$ kubectl -n vesper-system logs deploy/vesper-controller-manager | head -1   # Starting Vesper {"version": "v0.1.0-rc.2"}
+laptop$ kubectl -n vesper-system logs deploy/vesper-controller-manager | head -1   # Starting Vesper {"version": "v0.1.0"}
 ```
 
 Install `vesperctl` from the same release, after checking the archive (here
 for macOS on Apple silicon; pick the archive of your platform):
 
 ```sh
-laptop$ gh release download v0.1.0-rc.2 --repo eventide-oss/vesper \
+laptop$ gh release download v0.1.0 --repo eventide-oss/vesper \
   --pattern 'vesperctl_*_darwin_arm64.tar.gz' --pattern checksums.txt
 laptop$ shasum -a 256 --check --ignore-missing checksums.txt        # OK
-laptop$ gh attestation verify vesperctl_0.1.0-rc.2_darwin_arm64.tar.gz --repo eventide-oss/vesper
-laptop$ tar xzf vesperctl_0.1.0-rc.2_darwin_arm64.tar.gz vesperctl
+laptop$ gh attestation verify vesperctl_0.1.0_darwin_arm64.tar.gz --repo eventide-oss/vesper
+laptop$ tar xzf vesperctl_0.1.0_darwin_arm64.tar.gz vesperctl
 laptop$ sudo install -m 755 vesperctl /usr/local/bin/vesperctl
-laptop$ vesperctl version                                            # v0.1.0-rc.2
+laptop$ vesperctl version                                            # v0.1.0
 ```
 
 Give the operator the domain of previews, by adding an argument to its
@@ -398,7 +398,7 @@ certificate and its key stay with Traefik.
 Delete the previews you created. To remove everything:
 
 ```sh
-laptop$ kubectl delete -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.2/install.yaml
+laptop$ kubectl delete -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0/install.yaml
 laptop$ kubectl delete certificate wildcard-preview -n kube-system
 laptop$ kubectl delete tlsstore default -n kube-system
 laptop$ kubectl delete -f https://github.com/cert-manager/cert-manager/releases/download/v1.21.3/cert-manager.yaml

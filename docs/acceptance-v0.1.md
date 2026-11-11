@@ -33,7 +33,7 @@ the GitHub CLI. The public address over HTTPS needs a real server, and follows
 | No orphan environment | 0 Vesper namespace left after the TTL, checked by an end-to-end test | ✅ the e2e test `TestCLIExpiry` checks that the namespace is gone; the run ends with 0 namespaces labelled `app.kubernetes.io/managed-by=vesper` |
 | An idiomatic, tested Go controller | unit and envtest tests green in CI on every pull request | ✅ the `test` job runs both with `-race` on every pull request; `main` is green |
 | Understand each concept before using it | a learning journal, and an ADR per structural choice | ⚠️ six ADRs ([docs/adr](adr/)); the journal has its template only: ⏳ to write |
-| A project others can join | contribution guide, 10 `good first issue`, a first external contributor | ✅ [CONTRIBUTING.md](../CONTRIBUTING.md), 10 open good first issues; ⏳ the first external contributions, #150 and #152, are in review |
+| A project others can join | contribution guide, 10 `good first issue`, a first external contributor | ✅ [CONTRIBUTING.md](../CONTRIBUTING.md), 10 open good first issues; ⏳ the first external contributions, #150 and #152, are in review and will land after v0.1.0 |
 | Prepare for the CNCF Sandbox | Apache 2.0 license and a neutral GitHub organization | ✅ [LICENSE](../LICENSE), SPDX headers checked in CI, organization `eventide-oss` |
 
 ## Use cases
@@ -87,6 +87,7 @@ the GitHub CLI. The public address over HTTPS needs a real server, and follows
 | README | ✅ status, quickstart, links to the guides |
 | License | ✅ |
 | Contribution guide | ✅ |
+| Repository visibility | ✅ public, under the organization `eventide-oss`; the image on GHCR is public too |
 
 ## The run, in detail
 
@@ -121,7 +122,7 @@ rc.2 ([GHSA-m437-fj8p-6x8h](https://github.com/eventide-oss/vesper/security/advi
 
 | Issue | What |
 | --- | --- |
-| #150, #152 | the first external contributions, in review |
+| #150, #152 | the first external contributions, in review; they land after v0.1.0 |
 | #155 | the message of `Provisioning` during a rollout reads `1/1 replicas available`, seen in this run |
 | #154 | `TestList` can fail when it runs across a second |
 | — | the learning journal (`docs/journal`) |

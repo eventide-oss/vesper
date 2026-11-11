@@ -24,7 +24,7 @@ Pick the release, then apply its install bundle: the CRD, the RBAC, the
 namespace `vesper-system` and the operator, with its image pinned by digest.
 
 ```sh
-VERSION=v0.1.0-rc.2
+VERSION=v0.1.0
 kubectl apply -f "https://github.com/eventide-oss/vesper/releases/download/$VERSION/install.yaml"
 kubectl -n vesper-system rollout status deploy/vesper-controller-manager
 ```
@@ -106,7 +106,7 @@ reset your changes, the overlay keeps them. Save this as
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-- https://github.com/eventide-oss/vesper/releases/download/v0.1.0-rc.2/install.yaml
+- https://github.com/eventide-oss/vesper/releases/download/v0.1.0/install.yaml
 patches:
 - target:
     kind: Deployment

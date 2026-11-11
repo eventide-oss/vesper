@@ -10,7 +10,7 @@ Vesper is a Kubernetes operator and a CLI (`vesperctl`). You declare a
 `PreviewEnvironment`; Vesper creates an isolated environment for it, and
 removes it automatically when its time to live (TTL) expires.
 
-> **Status:** release candidate. [v0.1.0-rc.2](https://github.com/eventide-oss/vesper/releases)
+> **Status:** [v0.1.0](https://github.com/eventide-oss/vesper/releases/tag/v0.1.0), the first release,
 > installs from one manifest: the operator runs each preview in a namespace
 > of its own, gives it a public address, over HTTPS if you want, and deletes
 > it when its TTL expires; `vesperctl` creates, follows, extends and deletes
