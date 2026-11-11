@@ -33,7 +33,7 @@ Vesper puts Gold and Cream, the star, first.
 | Night | `#101026` | main background |
 | Indigo | `#14142E` | surfaces and cards |
 | Violet | `#4A2670` | the sky; the `Pending` phase |
-| Dusk | `#F2784B` | the `Failed` phase and alerts |
+| Dusk | `#F2784B` | the `Expired` and `Failed` phases, and alerts |
 | Gold | `#FFE29A` | the accent: the star, links, the `Ready` phase |
 | Cream | `#FFF4D6` | text and the star |
 
@@ -46,8 +46,8 @@ docs.
 | --- | --- | --- |
 | `Pending` | Violet | the star rises |
 | `Ready` | Gold | it shines |
-| `Expired` | Cream at 40% | it fades |
-| `Failed` | Dusk | something blocks it |
+| `Expired` | Dusk | it sets |
+| `Failed` | Dusk | something blocks it; the reason says what |
 
 ## Type
 
@@ -66,7 +66,7 @@ Avoid:
 
 - Cutting the star out of the Eventide logo to use it alone.
 - Adding a moon, planets or other stars.
-- A Dusk star outside of the `Failed` phase and alerts.
+- A Dusk star outside of the `Expired` and `Failed` phases and alerts.
 - Animating the star out of its cycle: it rises, shines and sets.
 
 The source files of the identity are kept in the Figma file of eventide-oss,
