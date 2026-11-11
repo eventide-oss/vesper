@@ -748,7 +748,9 @@ site in `site/` is built with [Astro Starlight](https://starlight.astro.build/),
 and `site/scripts/sync-docs.mjs` translates `docs/` for it at each build. The
 first heading of a page becomes its title, links between pages become links of
 the site, and links to the rest of the repository point to GitHub. Write the
-docs as before, for GitHub; the site follows.
+docs as before, for GitHub; the site follows. The home page of the site is not in
+`docs/`: it is written for the site, in `site/src/landing/index.mdx`, and
+`docs/README.md` becomes its Overview page.
 
 Run it locally, with Node 22.23.4 or later:
 

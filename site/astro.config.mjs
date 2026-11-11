@@ -23,7 +23,7 @@ export default defineConfig({
 				'./src/styles/vesper.css',
 			],
 			sidebar: [
-				{ label: 'Overview', link: '/' },
+				'overview',
 				{ label: 'Start', items: ['quickstart', 'try-on-a-server', 'cheatsheet'] },
 				{ label: 'Reference', items: ['cli', 'crd-reference', 'metrics'] },
 				{

@@ -14,7 +14,7 @@ running copy of your application at that version, with its own URL, isolated
 from the others, and deleted automatically when its time to live (TTL) ends.
 It is an operator that runs in your cluster, and a CLI, `vesperctl`.
 
-**[Quickstart](docs/quickstart.md)** · **[Documentation](docs/README.md)** ·
+**[Quickstart](docs/quickstart.md)** · **[Documentation](https://eventide-oss.github.io/vesper/)** ·
 **[Security model](docs/security.md)** · **[Contributing](CONTRIBUTING.md)**
 
 ## How it works
@@ -75,7 +75,8 @@ isolated and does not stay forever.
 - [Security model](docs/security.md) and [metrics](docs/metrics.md)
 - [Development](docs/development.md): build and run Vesper from source
 
-All the guides are listed in [docs/](docs/README.md).
+All the guides are listed in [docs/](docs/README.md), and published on the
+[documentation site](https://eventide-oss.github.io/vesper/).
 
 ## Where we're going
 

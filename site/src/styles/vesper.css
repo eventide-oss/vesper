@@ -39,3 +39,32 @@
 	--sl-color-gray-7: #faf6ec;
 	--sl-color-black: #fffdf8;
 }
+
+/* The landing page: the night sky behind the hero, the star above it. */
+:root[data-has-hero] .page {
+	background:
+		radial-gradient(ellipse 90% 60% at 50% -10%, rgb(74 38 112 / 0.55), transparent 70%),
+		var(--sl-color-black);
+}
+
+:root[data-theme='light'][data-has-hero] .page {
+	background:
+		radial-gradient(ellipse 90% 60% at 50% -10%, rgb(234 223 247 / 0.9), transparent 70%),
+		var(--sl-color-black);
+}
+
+.hero > img {
+	border-radius: 22%;
+	box-shadow: 0 1.5rem 4rem -1rem rgb(255 226 154 / 0.25);
+	max-width: 16rem;
+}
+
+.hero h1 {
+	letter-spacing: -0.02em;
+}
+
+/* Images of the landing page fill the column, with the radius of the cards. */
+[data-has-hero] .sl-markdown-content img {
+	border-radius: 0.75rem;
+	width: 100%;
+}

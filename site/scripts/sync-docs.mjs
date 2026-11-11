@@ -9,7 +9,9 @@
 //   - links to the rest of the repository (code, LICENSE...) point to GitHub;
 //   - a banner names the latest release, since the site follows main.
 //
-// It also copies docs/images, and the logo and favicon of the site.
+// It also copies docs/images, the logo and favicon of the site, and the
+// landing page, which lives in site/src/landing: it is written for the site,
+// not for GitHub.
 
 import { execFileSync } from 'node:child_process';
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
@@ -37,8 +39,9 @@ async function markdownFiles(dir, prefix = '') {
 	return files;
 }
 
-// docs/README.md is the home page; other files keep their path.
-const outputPath = (rel) => rel.replace(/(^|\/)README\.md$/, '$1index.md');
+// docs/README.md, the index of the docs, is the Overview page: the home page
+// of the site is the landing page. Other files keep their path.
+const outputPath = (rel) => (rel === 'README.md' ? 'overview.md' : rel.replace(/(^|\/)README\.md$/, '$1index.md'));
 
 // The URL Starlight gives a page: each segment of its path slugged as GitHub
 // does for headings (lowercase, punctuation such as "." dropped).
@@ -125,7 +128,8 @@ for (const rel of files) {
 await rm(join(site, 'public/images'), { recursive: true, force: true });
 await cp(join(docs, 'images'), join(site, 'public/images'), { recursive: true });
 await mkdir(join(site, 'src/assets'), { recursive: true });
-for (const logo of ['mark.svg', 'mark-night.svg']) await cp(join(docs, 'images', logo), join(site, 'src/assets', logo));
+for (const logo of ['icon.svg', 'mark.svg', 'mark-night.svg']) await cp(join(docs, 'images', logo), join(site, 'src/assets', logo));
 await cp(join(docs, 'images/icon.svg'), join(site, 'public/favicon.svg'));
+await cp(join(site, 'src/landing/index.mdx'), join(content, 'index.mdx'));
 
 console.log(`synced ${files.length} pages from docs/${release ? `, latest release ${release}` : ''}`);

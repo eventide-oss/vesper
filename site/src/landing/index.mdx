@@ -1,0 +1,84 @@
+---
+title: Vesper
+description: Ephemeral preview environments for Kubernetes. One isolated namespace per pull request, deleted when its TTL ends.
+template: splash
+hero:
+  title: Preview environments that set on time.
+  tagline: Vesper gives each pull request its own preview on Kubernetes, a running copy of your application with its own URL, isolated from the others, and deleted when its time to live ends.
+  image:
+    file: ../../assets/icon.svg
+    alt: The Vesper star at the top of its path across the night sky.
+  actions:
+    - text: Get started
+      link: /vesper/quickstart/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/eventide-oss/vesper
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## The life of a preview
+
+![The life of a preview in four steps. 1, you ask for a preview: a PreviewEnvironment names an image, a port and a TTL; phase Pending. 2, Vesper runs it, isolated, in a namespace of its own; once the pods run, it is Ready with its URL. 3, its TTL runs out, 24 hours by default, and vesperctl extend buys time; phase Expired. 4, nothing is left: Vesper deletes the namespace and everything in it.](/vesper/images/lifecycle.png)
+
+Vesper does not build images: your CI builds one per pull request, and a
+`PreviewEnvironment` points at it. The operator, running in your cluster,
+does the rest; `vesperctl` follows it from your terminal.
+
+## Try it in a few commands
+
+On a local [kind](https://kind.sigs.k8s.io/) cluster, once
+[`vesperctl` is installed](/vesper/quickstart/#3-install-vesperctl):
+
+```sh
+kind create cluster --name vesper
+kubectl apply -f https://github.com/eventide-oss/vesper/releases/download/v0.1.0/install.yaml
+vesperctl create demo --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --ttl 2h
+vesperctl get demo
+```
+
+## Why Vesper
+
+<CardGrid>
+	<Card title="Isolated by default" icon="approve-check">
+		Each preview gets a namespace with the restricted Pod Security profile, a
+		quota and a default-deny NetworkPolicy. A namespace is a soft boundary: the
+		[security model](/vesper/security/) says what it protects against.
+	</Card>
+	<Card title="Gone on time" icon="star">
+		A TTL from 1 minute to 7 days. When it ends, the namespace and everything in
+		it is deleted. No orphans.
+	</Card>
+	<Card title="Easy to follow" icon="magnifier">
+		`vesperctl get` shows the phase, the URL, the expiry, the conditions and
+		the events. Prometheus metrics included.
+	</Card>
+	<Card title="Verifiable" icon="rocket">
+		Releases ship checksums and build provenance attestations; the image runs
+		as a non-root user and is pinned by digest.
+	</Card>
+</CardGrid>
+
+## Where we're going
+
+Today you create a preview yourself, and it runs one application. Next, the
+preview of a pull request opens and closes on its own, and runs the whole
+stack. These are concepts: the GitHub integration is planned for
+[v0.2](https://github.com/eventide-oss/vesper/milestone/6), the multi-service
+previews for [v0.3](https://github.com/eventide-oss/vesper/milestone/7).
+
+![Concept of the comment Vesper will post on a pull request in v0.2: your preview is ready, with its status, a link to visit it, its image and its expiry.](/vesper/images/pr-comment-v0.2.png)
+
+![Concept of a multi-service preview in v0.3: a webhook from the pull request reaches Vesper, which creates a namespace where web calls api and api calls a seeded postgres, inside a default-deny NetworkPolicy, comments the status of each component, and deletes the whole stack with the pull request.](/vesper/images/under-the-hood-v0.3.png)
+
+## Go further
+
+<CardGrid>
+	<LinkCard title="Quickstart" description="A kind cluster, the operator, a preview in your browser, in about ten minutes." href="/vesper/quickstart/" />
+	<LinkCard title="Try Vesper on a server" description="k3s on a VPS, a real domain and HTTPS." href="/vesper/try-on-a-server/" />
+	<LinkCard title="Architecture" description="The pieces of Vesper, and a reconciliation step by step." href="/vesper/architecture/" />
+	<LinkCard title="Contribute" description="Start with the contribution guide and a good first issue." href="https://github.com/eventide-oss/vesper/blob/main/CONTRIBUTING.md" />
+</CardGrid>
