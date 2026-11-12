@@ -35,14 +35,27 @@ Download the archive for your platform and the checksums, check the archive,
 and extract `vesperctl`:
 
 ```sh
+# 1. Find your system and processor, as the archives name them:
+#    darwin or linux, and amd64 or arm64.
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
-arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac
+arch=$(uname -m)
+case "$arch" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; esac
+
+# 2. Download the archive for your system, and the checksums of the release.
+#    ${VERSION#v} drops the "v": the archives are named vesperctl_0.1.0_...
 base="https://github.com/eventide-oss/vesper/releases/download/$VERSION"
 curl -sSLO "$base/vesperctl_${VERSION#v}_${os}_${arch}.tar.gz"
 curl -sSLO "$base/checksums.txt"
-shasum -a 256 --check --ignore-missing checksums.txt     # sha256sum on Linux
+
+# 3. Check that the archive is the one the release published: it must print
+#    "OK". On Linux, use sha256sum --check instead of shasum.
+shasum -a 256 --check --ignore-missing checksums.txt
+
+# 4. Extract vesperctl, and install it where your shell finds commands.
 tar xzf "vesperctl_${VERSION#v}_${os}_${arch}.tar.gz" vesperctl
 sudo install -m 755 vesperctl /usr/local/bin/vesperctl
+
+# 5. Check that it runs: it prints its version.
 vesperctl version
 ```
 
