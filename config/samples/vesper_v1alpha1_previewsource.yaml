@@ -1,0 +1,27 @@
+# Allows the repository acme/app to have previews of its pull requests
+# (ADR-0007). Created by an administrator of the cluster: the source is
+# cluster-scoped. Used by the GitHub integration, from v0.2.
+apiVersion: vesper.eventide.dev/v1alpha1
+kind: PreviewSource
+metadata:
+  name: acme-app # the previews are named acme-app-pr-<number>
+spec:
+  repository: acme/app
+  # The CI of acme/app pushes this image for each commit of a pull request.
+  image: ghcr.io/acme/app:pr-{{number}}-{{sha}}
+  # The workflow that builds it: a preview switches to the image of a commit
+  # once a run of it succeeds on that commit.
+  buildWorkflow: preview.yml
+  # Where the PreviewEnvironment objects of this source are created.
+  namespace: previews-acme
+  # Every pull request gets a preview; the label no-preview stops one.
+  trigger: All
+  # Pull requests from forks get none.
+  forkPullRequests: Deny
+  defaults:
+    port: 8080
+    replicas: 1
+    ttl: 24h
+    env:
+      - name: APP_ENV
+        value: preview

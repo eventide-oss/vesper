@@ -8,8 +8,10 @@
   error messages.
 - [Architecture](architecture.md): the pieces of Vesper, a reconciliation
   step by step, and the life of a preview.
-- [CRD reference](crd-reference.md): every field of `PreviewEnvironment`,
-  generated from the Go types (`make docs-reference`).
+- [CRD reference](crd-reference.md): every field of `PreviewEnvironment` and
+  `PreviewSource`, generated from the Go types (`make docs-reference`).
+- [Allow a repository](preview-sources.md): the `PreviewSource` of a
+  repository, for the GitHub integration of v0.2.
 - [Troubleshooting](troubleshooting.md): what each phase and reason means,
   the commands that show the cause, and the usual fix.
 - [Development](development.md): tools and the local kind cluster.

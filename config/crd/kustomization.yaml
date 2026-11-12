@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/vesper.eventide.dev_previewenvironments.yaml
+- bases/vesper.eventide.dev_previewsources.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

@@ -1,4 +1,5 @@
 ## Append samples of your project ##
 resources:
 - vesper_v1alpha1_previewenvironment.yaml
+- vesper_v1alpha1_previewsource.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,21 @@
+# This rule is not used by the project vesper itself.
+# It is provided to allow the cluster admin to help manage permissions for users.
+#
+# Grants full permissions ('*') over PreviewSources, which decide which
+# repositories may run code on the cluster (ADR-0007). Give it to the
+# administrators of Vesper only. There is no editor role for teams on purpose.
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: vesper
+    app.kubernetes.io/managed-by: kustomize
+  name: previewsource-admin-role
+rules:
+- apiGroups:
+  - vesper.eventide.dev
+  resources:
+  - previewsources
+  verbs:
+  - '*'
