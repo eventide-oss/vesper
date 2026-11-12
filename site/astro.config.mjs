@@ -31,6 +31,7 @@ export default defineConfig({
 					items: [
 						'architecture',
 						'security',
+						'gitops-tools',
 						{ label: 'Decision records', items: [{ autogenerate: { directory: 'adr' } }] },
 					],
 				},

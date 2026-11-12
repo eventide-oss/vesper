@@ -17,6 +17,8 @@
   record and HTTPS with cert-manager, step by step.
 - [Security model](security.md): what Vesper protects against, its known
   limits, and a hardening checklist.
+- [Vesper, Argo CD and Flux](gitops-tools.md): how Vesper compares with the
+  pull request previews of GitOps tools, and when to choose which.
 - [Metrics](metrics.md): the Prometheus metrics of the operator, and how to
   read them.
 - [Releasing](release.md): how to cut a release, and how to verify one.

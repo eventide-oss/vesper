@@ -72,6 +72,8 @@ isolated and does not stay forever.
 - [Cheat sheet](docs/cheatsheet.md): the everyday commands
 - [vesperctl reference](docs/cli.md) and [CRD reference](docs/crd-reference.md)
 - [Architecture](docs/architecture.md) and the [decision records](docs/adr/)
+- [Vesper, Argo CD and Flux](docs/gitops-tools.md): how Vesper compares, and
+  when to choose which
 - [Security model](docs/security.md) and [metrics](docs/metrics.md)
 - [Development](docs/development.md): build and run Vesper from source
 
