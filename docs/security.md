@@ -65,7 +65,20 @@ and of the API server, which the operator reads and keeps up to date.
 - Tests: `TestReconcileCreatesNetworkPolicy`, `TestReconcileRestoresChangedNetworkPolicy`,
   `TestReconcileDeniesHostAddresses`, `TestEnvtestDeniesNewNodeAddress`, and the
   e2e test `TestPreviewNetworkIsolation`, which probes the isolation from inside
-  a preview on kind.
+  a preview on kind: another preview, the API server through its Service and
+  through the address of its endpoint, and the kubelet through the address of
+  the node are blocked; the internet is reached.
+- Verified with these CNI plugins, in their default configuration:
+
+  | CNI | Version | Checked by |
+  | --- | --- | --- |
+  | kindnet | the one of kind v0.33.0 | the `e2e` job of CI, on every pull request |
+  | Calico | v3.33.0 | the `Isolation` workflow, on changes to the isolation, every week, and on demand |
+  | Cilium | 1.20.4 | the `Isolation` workflow, as above |
+  | kube-router | the one of k3s v1.37.2+k3s1 | by hand, on a server ([#96](https://github.com/eventide-oss/vesper/issues/96)) |
+
+  Cilium matches traffic to the nodes by identity rather than by address; the
+  policy holds there too.
 - The public addresses of the nodes were first missed:
   [GHSA-m437-fj8p-6x8h](https://github.com/eventide-oss/vesper/security/advisories/GHSA-m437-fj8p-6x8h),
   fixed in v0.1.0-rc.2.
@@ -175,8 +188,9 @@ pinned by digest or commit SHA.
   Stronger isolation (gVisor, Kata Containers, one cluster per tenant) is not
   supported yet.
 - **The network isolation depends on the CNI.** kindnet, k3s, Calico and
-  Cilium enforce NetworkPolicies; flannel alone does not, and the policy is
-  then ignored without an error.
+  Cilium enforce NetworkPolicies, and are verified as listed above; flannel
+  alone does not, and the policy is then ignored without an error. Another
+  CNI, or a configuration other than the default, is not verified.
 - **A preview reaches the internet.** It can call external APIs, and so it can
   also send data out or download code.
 - **DNS is open to any address**, on port 53, because the DNS server of the
@@ -202,7 +216,8 @@ For whoever installs Vesper:
 1. **Run previews of untrusted code on a cluster of their own**, not next to
    production workloads.
 2. **Use a CNI that enforces NetworkPolicies**, and check it: the e2e test
-   `TestPreviewNetworkIsolation` shows how.
+   `TestPreviewNetworkIsolation` shows how, and runs with Calico or Cilium
+   with `E2E_CNI` ([Development](development.md#end-to-end-test)).
 3. **Do not expose the API server or the kubelet** to the Internet. On a server,
    allow only 22, 80 and 443, with a final rule that drops the rest
    ([try on a server](try-on-a-server.md#1-install-k3s)).

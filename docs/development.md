@@ -678,6 +678,19 @@ when it fails, the logs are attached to the run as the artifact `e2e-logs`
 (at the bottom of the run summary page, kept 7 days). They are public, like
 the repository: the e2e cluster must never hold a secret.
 
+`E2E_CNI` chooses the network plugin of the cluster: `kindnet` (the default),
+`calico` or `cilium`, at the versions pinned in `hack/test-e2e.sh`; `cilium`
+needs [helm](https://helm.sh/docs/intro/install/). `E2E_RUN` runs only the
+tests whose name matches it. To check the network isolation with Cilium:
+
+```sh
+E2E_CNI=cilium E2E_RUN=TestPreviewNetworkIsolation make test-e2e
+```
+
+The workflow `.github/workflows/isolation.yml` runs this check with Calico and
+Cilium on pull requests that change the isolation, on `main`, every Monday,
+and on demand (Actions → Isolation → Run workflow), before a release.
+
 ### Integration tests
 
 The integration tests in `test/integration` sit behind the `integration` build

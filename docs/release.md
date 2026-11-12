@@ -55,6 +55,9 @@ final tag.
 ## Cut a release
 
 1. Check that `main` is green on CI and holds everything the release needs.
+   Run the **Isolation** workflow on `main` (Actions → Isolation → Run
+   workflow) and wait for it to pass: it checks the network isolation with
+   Calico and Cilium.
 
 2. Tag the commit of `main`, with a signed, annotated tag:
 

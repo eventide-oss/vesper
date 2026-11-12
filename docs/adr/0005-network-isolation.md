@@ -70,7 +70,12 @@ APIs (payments, maps, authentication), and their previews would fail.
 - The isolation depends on the CNI. kindnet (the CNI of recent kind
   releases), k3s, Calico and Cilium enforce NetworkPolicies; flannel alone
   does not. The docs say so, and must never promise hard multi-tenant
-  isolation: a namespace stays a soft boundary.
+  isolation: a namespace stays a soft boundary. Since #167, CI checks the
+  isolation with kindnet, Calico and Cilium; Cilium matches the nodes by
+  identity and not by `ipBlock`, and the policy holds there too. A
+  `CiliumNetworkPolicy` with `toEntities` would say the same without the
+  list of addresses, at the price of depending on Cilium: an opt-in mode to
+  consider later.
 - Nodes with public addresses (a server with k3s, for example) were first
   missed: a preview could reach the API server and the kubelet through them.
   Denying the addresses of the cluster fixed it; the price is that a preview

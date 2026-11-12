@@ -12,6 +12,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,13 +32,24 @@ const (
 	// policyTimeout bounds the wait for the CNI to apply a change: kindnet
 	// enforces NetworkPolicies, but not at once.
 	policyTimeout = time.Minute
+	// kubeletPort is the port of the API of the kubelet, on every node.
+	kubeletPort = 10250
+	// internetAddress is an address on the internet that answers on 443
+	// (Cloudflare's public DNS): previews must still reach the internet.
+	internetAddress = "1.1.1.1"
 )
 
 // TestPreviewNetworkIsolation checks that the NetworkPolicy of a preview is
 // enforced (ADR-0005): the preview is reachable from a namespace that is not
 // a preview, such as the one of an ingress controller, and from itself, but
-// not from another preview, and it cannot reach the private network of the
-// cluster.
+// not from another preview; it cannot reach the private network of the
+// cluster, nor the API server and the kubelets through the addresses of the
+// nodes (GHSA-m437-fj8p-6x8h), and it reaches the internet. Each blocked
+// target is first reached from the namespace of the test, so that a probe
+// that cannot connect at all does not pass for a blocked one.
+//
+// It runs with every CNI plugin of the isolation job of CI (E2E_CNI in
+// hack/test-e2e.sh): each plugin enforces the policy in its own way.
 func TestPreviewNetworkIsolation(t *testing.T) {
 	ctx := context.Background()
 	c := newClient(t)
@@ -67,6 +79,19 @@ func TestPreviewNetworkIsolation(t *testing.T) {
 	expectReachable(t, c, ns.Name, apiServer, 443, true)
 	expectReachable(t, c, previewNamespace, apiServer, 443, false)
 
+	// The API server and the kubelet also answer on the addresses of the
+	// nodes, which may be public; a CNI may match them by identity rather
+	// than by address.
+	endpoint, endpointPort := apiServerEndpoint(t, c)
+	expectReachable(t, c, ns.Name, endpoint, endpointPort, true)
+	expectReachable(t, c, previewNamespace, endpoint, endpointPort, false)
+	node := nodeAddress(t, c)
+	expectReachable(t, c, ns.Name, node, kubeletPort, true)
+	expectReachable(t, c, previewNamespace, node, kubeletPort, false)
+
+	// The internet stays reachable.
+	expectReachable(t, c, previewNamespace, internetAddress, 443, true)
+
 	// The namespace of the test now looks like another preview, with no
 	// NetworkPolicy of its own: only the policy of the preview stops it.
 	ns.Labels = map[string]string{controller.LabelManagedBy: controller.ManagedByVesper}
@@ -74,6 +99,48 @@ func TestPreviewNetworkIsolation(t *testing.T) {
 		t.Fatalf("label namespace: %v", err)
 	}
 	expectReachable(t, c, ns.Name, app, 80, false)
+}
+
+// apiServerEndpoint returns an address of the API server and its port, as the
+// EndpointSlices of the kubernetes Service list them: the real address, not
+// the virtual one of the Service.
+func apiServerEndpoint(t *testing.T, c client.Client) (string, int) {
+	t.Helper()
+	var slices discoveryv1.EndpointSliceList
+	if err := c.List(context.Background(), &slices, client.InNamespace(metav1.NamespaceDefault),
+		client.MatchingLabels{discoveryv1.LabelServiceName: "kubernetes"}); err != nil {
+		t.Fatalf("list the endpoints of the API server: %v", err)
+	}
+	for _, slice := range slices.Items {
+		if len(slice.Ports) == 0 || slice.Ports[0].Port == nil {
+			continue
+		}
+		for _, endpoint := range slice.Endpoints {
+			if len(endpoint.Addresses) > 0 {
+				return endpoint.Addresses[0], int(*slice.Ports[0].Port)
+			}
+		}
+	}
+	t.Fatal("the kubernetes Service has no endpoint")
+	return "", 0
+}
+
+// nodeAddress returns the internal address of a node of the cluster.
+func nodeAddress(t *testing.T, c client.Client) string {
+	t.Helper()
+	var nodes corev1.NodeList
+	if err := c.List(context.Background(), &nodes); err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	for _, node := range nodes.Items {
+		for _, address := range node.Status.Addresses {
+			if address.Type == corev1.NodeInternalIP {
+				return address.Address
+			}
+		}
+	}
+	t.Fatal("no node has an internal address")
+	return ""
 }
 
 // expectReachable runs probes in namespace until one connects to host:port,
