@@ -68,8 +68,10 @@ It does five things:
 1. **Receive webhooks** over HTTPS, through the ingress controller, on a host
    of its own. It checks the signature `X-Hub-Signature-256` (HMAC SHA-256
    with the webhook secret, compared in constant time) before it parses the
-   payload; it rejects a missing or wrong signature with 401, a payload over
-   5 MiB, and any event it does not handle.
+   payload; it rejects a missing or wrong signature with 401, and a payload
+   over 5 MiB. A signed event it does not handle is acknowledged and ignored:
+   GitHub sends some, such as `installation`, to every App, and refusing them
+   would show failed deliveries that are not.
 2. **Get installation tokens** from the private key of the App.
 3. **Translate** a pull request into a `PreviewEnvironment`, following the
    `PreviewSource` of its repository: create, update, delete.
@@ -78,9 +80,11 @@ It does five things:
    repository and fix what a lost webhook missed.
 
 Its rights are the smallest that do this: create, update and delete
-`PreviewEnvironment` objects, read `PreviewSource` objects, and read one
-Secret, `vesper-github`, by name, which holds the App ID, the private key and
-the webhook secret. It creates no namespace and touches no Deployment: the
+`PreviewEnvironment` objects, and read `PreviewSource` objects. It has no
+right on Secrets: the Secret `vesper-github`, which holds the App ID, the
+private key and the webhook secret, is mounted as files in its pod by the
+kubelet, so that a stolen ServiceAccount token reads no Secret through the
+API. It creates no namespace and touches no Deployment: the
 operator does that, with every check of a preview (validation, quota,
 isolation, TTL), and stays unaware of GitHub.
 
@@ -177,7 +181,7 @@ payload. The image is the one the CI of the base repository built (#131).
 | A stranger runs code through a fork | forks denied by default; with `RequireLabel`, the label must come from someone with write access |
 | Any App installation runs code on the cluster | only repositories with a `PreviewSource` get previews; the rest is logged and ignored |
 | Pull request data is crafted (branch, title) | never used in names, labels, images or commands; names come from the `PreviewSource` and the number |
-| A token leaks | installation tokens last one hour and cover the installed repositories only; the private key and the webhook secret sit in one Secret, readable by `vesper-github` only; none is logged, nor the payloads |
+| A token leaks | installation tokens last one hour and cover the installed repositories only; the private key and the webhook secret sit in one Secret, mounted in the pod of `vesper-github` only, with no RBAC right to read it; none is logged, nor the payloads |
 | `vesper-github` is compromised | it can only create, change and delete previews, each still bound by the checks of the operator: no namespace, no Secret, no other workload |
 | The URL of a private preview is public | protected URLs behind a GitHub login (#132) |
 
