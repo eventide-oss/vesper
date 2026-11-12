@@ -1,0 +1,31 @@
+# The webhook endpoint, for the ingress controller.
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-webhook
+  namespace: system
+spec:
+  selector:
+    app.kubernetes.io/name: vesper
+    app.kubernetes.io/component: github
+  ports:
+  - name: webhook
+    port: 80
+    targetPort: webhook
+    protocol: TCP
+---
+# The metrics endpoint, inside the cluster only, for authorized clients.
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-metrics
+  namespace: system
+spec:
+  selector:
+    app.kubernetes.io/name: vesper
+    app.kubernetes.io/component: github
+  ports:
+  - name: https
+    port: 8443
+    targetPort: https
+    protocol: TCP

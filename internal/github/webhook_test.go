@@ -234,3 +234,12 @@ func TestNewReceiverRegistersOnce(t *testing.T) {
 		t.Error("a second receiver registered the same metric")
 	}
 }
+
+func TestSecretCheck(t *testing.T) {
+	if err := SecretCheck(func() ([]byte, error) { return []byte(testSecret), nil })(nil); err != nil {
+		t.Errorf("ready with a secret: %v", err)
+	}
+	if err := SecretCheck(func() ([]byte, error) { return nil, errors.New("missing") })(nil); err == nil {
+		t.Error("ready without a secret")
+	}
+}

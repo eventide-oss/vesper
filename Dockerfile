@@ -1,4 +1,5 @@
-# The image of the operator (the manager).
+# The image of the operator (the manager) and of vesper-github, the GitHub
+# integration (ADR-0007): two programs, one image, one release.
 #
 # Base images are pinned by digest, so that a build always starts from the
 # same bytes; Dependabot proposes the updates. Keep the Go version in line
@@ -27,13 +28,16 @@ COPY . .
 # GOARCH has no default: with a plain `docker build`, TARGETARCH is the
 # architecture of the host, so the binary matches the image.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
-    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o manager ./cmd
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o manager ./cmd && \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o vesper-github ./cmd/vesper-github
 
 # Distroless: no shell and no package manager, only the binary. The
 # "nonroot" variant runs as user 65532.
 FROM gcr.io/distroless/static:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 WORKDIR /
-COPY --from=builder /workspace/manager .
+COPY --from=builder /workspace/manager /workspace/vesper-github ./
 USER 65532:65532
 
+# The operator by default; the Deployment of vesper-github sets its command.
 ENTRYPOINT ["/manager"]

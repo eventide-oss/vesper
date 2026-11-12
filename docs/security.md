@@ -158,6 +158,19 @@ operator has no right on Secrets.
   server, the preview namespace held no Secret
   ([try on a server](try-on-a-server.md#7-serve-previews-over-https)).
 
+### The webhook endpoint authenticates every delivery
+
+`vesper-github`, the GitHub integration, is the only part of Vesper that
+faces the Internet ([ADR-0007](adr/0007-github-integration.md)). It reads a
+delivery with a limit of 5 MiB and checks its HMAC SHA-256 signature, in
+constant time, before anything looks at it; it never logs the secret or the
+payload. It has no right on Secrets: the secret of the GitHub App is mounted
+in its pod. Its other rights are previews and sources only, so that a flaw in
+it reaches no namespace, no Deployment and no Secret.
+
+- Code: [`webhook.go`](../internal/github/webhook.go), [`role.yaml`](../config/github/role.yaml).
+- Tests: `TestReceiver`, `TestReceiverLogsNoSecret`, `TestRBACIsMinimal`.
+
 ### Metrics require authentication
 
 With `config/default`, the metrics endpoint is served over HTTPS and checks

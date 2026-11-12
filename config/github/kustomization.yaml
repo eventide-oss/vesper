@@ -1,0 +1,17 @@
+# vesper-github, the GitHub integration of Vesper (ADR-0007): optional, next
+# to the operator. It needs the Secret vesper-github in vesper-system, with
+# the key webhook-secret: see docs/development.md#vesper-github.
+namespace: vesper-system
+namePrefix: vesper-
+labels:
+- pairs:
+    app.kubernetes.io/name: vesper
+    app.kubernetes.io/component: github
+  includeSelectors: false
+resources:
+- service_account.yaml
+- role.yaml
+- role_binding.yaml
+- deployment.yaml
+- service.yaml
+- ingress.yaml

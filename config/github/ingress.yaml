@@ -1,0 +1,24 @@
+# The webhook endpoint on the Internet: set the host of your cluster, and the
+# webhook URL of the GitHub App to https://<host>/webhook. Only that path is
+# exposed. Without a TLS secret, the ingress controller serves its default
+# certificate, as for previews (ADR-0006).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: github-webhook
+  namespace: system
+spec:
+  rules:
+  - host: hooks.preview.example.com
+    http:
+      paths:
+      - path: /webhook
+        pathType: Exact
+        backend:
+          service:
+            name: github-webhook
+            port:
+              name: webhook
+  tls:
+  - hosts:
+    - hooks.preview.example.com

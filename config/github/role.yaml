@@ -1,0 +1,44 @@
+# The rights of vesper-github, the only part of Vesper that faces the
+# Internet (ADR-0007): previews, and nothing the operator does with them. It
+# has no right on Secrets: its own is mounted in its pod.
+# internal/github/rbac_test.go checks that it has no other right.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: github-role
+rules:
+# Turn pull requests into previews (#128), and follow their phase (#129).
+- apiGroups:
+  - vesper.eventide.dev
+  resources:
+  - previewenvironments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Read which repositories are allowed, and how.
+- apiGroups:
+  - vesper.eventide.dev
+  resources:
+  - previewsources
+  verbs:
+  - get
+  - list
+  - watch
+# Protect the metrics endpoint: check who asks, and whether they may.
+- apiGroups:
+  - authentication.k8s.io
+  resources:
+  - tokenreviews
+  verbs:
+  - create
+- apiGroups:
+  - authorization.k8s.io
+  resources:
+  - subjectaccessreviews
+  verbs:
+  - create

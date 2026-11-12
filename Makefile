@@ -95,9 +95,10 @@ check-license: ## Fail if a Go file has no license header.
 ##@ Build
 
 .PHONY: build
-build: manifests generate ## Build vesperctl and the manager into bin/.
+build: manifests generate ## Build vesperctl, the manager and vesper-github into bin/.
 	go build -ldflags "$(LDFLAGS)" -o bin/vesperctl ./cmd/vesperctl
 	go build -ldflags "$(LDFLAGS)" -o bin/manager ./cmd
+	go build -ldflags "$(LDFLAGS)" -o bin/vesper-github ./cmd/vesper-github
 
 .PHONY: run
 run: manifests generate ## Run the manager from your host against the current kubectl context.

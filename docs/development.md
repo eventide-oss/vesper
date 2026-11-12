@@ -753,6 +753,55 @@ the files in the archives get the date of the commit and the owner `root`.
 CI runs a snapshot on every pull request, in the `release-snapshot` job, and
 checks the checksums and the version the Linux binary prints.
 
+## vesper-github
+
+`vesper-github` is the GitHub integration of v0.2 ([ADR-0007](adr/0007-github-integration.md)):
+a second program, `cmd/vesper-github`, built into the same image as the
+operator, and deployed next to it by `config/github`. It is the only part of
+Vesper that faces the Internet. Today it receives and authenticates the
+webhooks of the GitHub App (`internal/github`); turning pull requests into
+previews comes with #128.
+
+- **The webhook endpoint**, `POST /webhook` on port 8080, exposed through the
+  ingress controller on a host of its own (`config/github/ingress.yaml`). A
+  delivery must carry a valid `X-Hub-Signature-256`, an HMAC SHA-256 of its
+  body with the webhook secret, compared in constant time: 401 otherwise.
+  Bodies over 5 MiB get 413. Signed `ping`, `pull_request` and
+  `workflow_run` deliveries are accepted; other signed events are ignored.
+- **The secret** is a file of the Secret `vesper-github`, key
+  `webhook-secret`, mounted in the pod by the kubelet: `vesper-github` has no
+  RBAC right on Secrets, and reads the file at each delivery, so a new secret
+  applies at once. The pod is not ready until it can read it.
+- **Its rights**, in `config/github/role.yaml`: previews and sources, and
+  what the protected metrics need. `internal/github/rbac_test.go` fails if a
+  right is added.
+- **Metrics**: `vesper_github_webhook_deliveries_total`, by result, on port
+  8443, for authorized clients only.
+
+Try it on the local cluster, with a secret of your own and a signed `ping`:
+
+```sh
+# The image holds the operator and vesper-github.
+make docker-build IMG=vesper-manager:dev
+kind load docker-image vesper-manager:dev --name vesper-dev
+
+# The Secret of the GitHub App: here, a random webhook secret.
+kubectl create namespace vesper-system --dry-run=client -o yaml | kubectl apply -f -
+secret=$(openssl rand -hex 32)
+kubectl -n vesper-system create secret generic vesper-github --from-literal=webhook-secret="$secret"
+
+# vesper-github, with the image just built.
+bin/kustomize build config/github | sed "s|image: controller:latest|image: vesper-manager:dev|" | kubectl apply -f -
+kubectl -n vesper-system rollout status deploy/vesper-github
+
+# A ping signed as GitHub signs it: 200. Without the signature: 401.
+kubectl -n vesper-system port-forward svc/vesper-github-webhook 18080:80 &
+body='{"zen":"Keep it logically awesome."}'
+sig="sha256=$(printf '%s' "$body" | openssl dgst -sha256 -hmac "$secret" | awk '{print $NF}')"
+curl -i -X POST -H 'Content-Type: application/json' -H 'X-GitHub-Event: ping' \
+  -H "X-Hub-Signature-256: $sig" --data "$body" http://localhost:18080/webhook
+```
+
 ## Documentation site
 
 The pages of `docs/` are also published as a site, at

@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github
+  namespace: system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vesper
+      app.kubernetes.io/component: github
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: github
+      labels:
+        app.kubernetes.io/name: vesper
+        app.kubernetes.io/component: github
+    spec:
+      serviceAccountName: github
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        # The files of the mounted Secret belong to root: this group, the one
+        # of the user of the image, lets vesper-github read them (0440).
+        fsGroup: 65532
+      containers:
+      - name: github
+        # The image of the operator: it holds both programs.
+        image: controller:latest
+        command:
+        - /vesper-github
+        args:
+        - --webhook-bind-address=:8080
+        - --webhook-secret-file=/etc/vesper-github/webhook-secret
+        - --metrics-bind-address=:8443
+        - --health-probe-bind-address=:8081
+        ports:
+        - containerPort: 8080
+          name: webhook
+          protocol: TCP
+        - containerPort: 8443
+          name: https
+          protocol: TCP
+        - containerPort: 8081
+          name: health
+          protocol: TCP
+        securityContext:
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - "ALL"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        # Ready once the webhook secret is readable.
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 10m
+            memory: 64Mi
+        # The Secret of the GitHub App, mounted by the kubelet: vesper-github
+        # needs no RBAC right to read it, and a rotated secret applies at once.
+        volumeMounts:
+        - name: github-app
+          mountPath: /etc/vesper-github
+          readOnly: true
+      volumes:
+      - name: github-app
+        secret:
+          secretName: vesper-github
+          defaultMode: 0440
+      terminationGracePeriodSeconds: 15

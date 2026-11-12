@@ -200,3 +200,13 @@ func sanitize(s string) string {
 		return r
 	}, s)
 }
+
+// SecretCheck is a readiness check: a pod that cannot read its webhook
+// secret would refuse every delivery, so it gets no traffic. The error says
+// why, never what the secret is.
+func SecretCheck(secret func() ([]byte, error)) func(*http.Request) error {
+	return func(*http.Request) error {
+		_, err := secret()
+		return err
+	}
+}
