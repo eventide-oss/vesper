@@ -758,9 +758,27 @@ checks the checksums and the version the Linux binary prints.
 `vesper-github` is the GitHub integration of v0.2 ([ADR-0007](adr/0007-github-integration.md)):
 a second program, `cmd/vesper-github`, built into the same image as the
 operator, and deployed next to it by `config/github`. It is the only part of
-Vesper that faces the Internet. Today it receives and authenticates the
-webhooks of the GitHub App (`internal/github`); turning pull requests into
-previews comes with #128.
+Vesper that faces the Internet. It receives and authenticates the webhooks
+of the GitHub App, and turns the pull requests of the repositories that a
+[`PreviewSource`](preview-sources.md) allows into `PreviewEnvironment`
+objects (`internal/github`).
+
+- **A queue of pull requests.** A webhook only says which pull request
+  changed; a resync, at start and every 10 minutes (`--resync-interval`),
+  adds the open pull requests and those of the existing previews of each
+  source. The reconciler then reads the pull request from the GitHub API,
+  never trusting the payload for its state, so that late, repeated or lost
+  deliveries all end the same way.
+- **The decision** (`decide.go`): no preview for a closed pull request, a
+  draft, a fork, `no-preview` (trigger `All`) or no `preview` (trigger
+  `Label`); otherwise the preview of the source, once the `buildWorkflow`
+  succeeded on the head commit; a new commit keeps the old image until its
+  own is built, then resets the ttl. A `PreviewEnvironment` of the same name
+  that the integration did not create is never touched.
+- **The GitHub App** authenticates with a JWT signed by its private key, and
+  uses installation tokens of one hour, renewed five minutes before they
+  expire. Its ID and key are files of the Secret `vesper-github` (`app-id`,
+  `private-key`), next to `webhook-secret`.
 
 - **The webhook endpoint**, `POST /webhook` on port 8080, exposed through the
   ingress controller on a host of its own (`config/github/ingress.yaml`). A
@@ -785,10 +803,15 @@ Try it on the local cluster, with a secret of your own and a signed `ping`:
 make docker-build IMG=vesper-manager:dev
 kind load docker-image vesper-manager:dev --name vesper-dev
 
-# The Secret of the GitHub App: here, a random webhook secret.
+# The Secret of the GitHub App. To try the endpoint only, a random webhook
+# secret and a throwaway key do: vesper-github calls GitHub only for pull
+# requests of an allowed repository.
 kubectl create namespace vesper-system --dry-run=client -o yaml | kubectl apply -f -
 secret=$(openssl rand -hex 32)
-kubectl -n vesper-system create secret generic vesper-github --from-literal=webhook-secret="$secret"
+openssl genrsa -out /tmp/throwaway-key.pem 2048
+kubectl -n vesper-system create secret generic vesper-github --from-literal=webhook-secret="$secret" \
+  --from-literal=app-id=1 --from-file=private-key=/tmp/throwaway-key.pem
+rm /tmp/throwaway-key.pem
 
 # vesper-github, with the image just built.
 bin/kustomize build config/github | sed "s|image: controller:latest|image: vesper-manager:dev|" | kubectl apply -f -

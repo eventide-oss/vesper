@@ -6,8 +6,10 @@ integration: a pull request of a repository without a `PreviewSource` gets no
 preview, even if the GitHub App of Vesper is installed on it
 ([ADR-0007](adr/0007-github-integration.md)).
 
-> The GitHub integration comes with v0.2. Until then, a `PreviewSource` is
-> accepted and validated by the API server, but nothing reads it yet.
+> `vesper-github`, the GitHub integration of v0.2, reads the sources
+> ([Development](development.md#vesper-github)). Until v0.2 is released,
+> a `PreviewSource` is accepted and validated, and used only by a
+> `vesper-github` built from `main`.
 
 ## Who creates it
 
@@ -116,4 +118,8 @@ not put secrets in them.
 
 Kubernetes cannot refuse two sources for the same repository, since the rule
 would span two objects. The integration refuses both, and logs why, rather
-than pick one: delete one of them.
+than pick one: delete one of them. A repository without a source gets no
+preview either, and the log of `vesper-github` says so.
+
+The namespace of a source must exist: `vesper-github` has no right to create
+namespaces, and logs the error until an administrator creates it.

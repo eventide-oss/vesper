@@ -104,7 +104,8 @@ func Decide(source *vesperv1alpha1.PreviewSource, pr PullRequest, imageReady boo
 	if age < 0 {
 		age = 0
 	}
-	if age+ttl.Duration > vesperv1alpha1.MaxTTL {
+	// Compared this way, a huge age cannot overflow the sum.
+	if age > vesperv1alpha1.MaxTTL-ttl.Duration {
 		return Decision{Action: ActionReplace, Preview: desired(source, pr, image, ttl),
 			Reason: fmt.Sprintf("new commit %.7s; the preview is %s old, past the bound of %s: replaced",
 				pr.HeadSHA, age, vesperv1alpha1.MaxTTL)}

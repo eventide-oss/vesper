@@ -34,6 +34,8 @@ spec:
         args:
         - --webhook-bind-address=:8080
         - --webhook-secret-file=/etc/vesper-github/webhook-secret
+        - --app-id-file=/etc/vesper-github/app-id
+        - --private-key-file=/etc/vesper-github/private-key
         - --metrics-bind-address=:8443
         - --health-probe-bind-address=:8081
         ports:

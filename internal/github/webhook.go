@@ -66,6 +66,16 @@ type Receiver struct {
 	secret  func() ([]byte, error)
 	log     logr.Logger
 	results *prometheus.CounterVec
+	// dispatch receives the authenticated pull_request and workflow_run
+	// deliveries; nil drops them.
+	dispatch func(event string, payload []byte)
+}
+
+// OnEvent sets the function that receives the authenticated pull_request and
+// workflow_run deliveries, with their payload. It must not block: the
+// answer to GitHub waits for it.
+func (r *Receiver) OnEvent(dispatch func(event string, payload []byte)) {
+	r.dispatch = dispatch
 }
 
 // NewReceiver returns a Receiver that checks deliveries with the webhook
@@ -156,7 +166,9 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-	// The events that change previews are handled from #128.
+	if r.dispatch != nil {
+		r.dispatch(event, body)
+	}
 	w.WriteHeader(http.StatusAccepted)
 }
 

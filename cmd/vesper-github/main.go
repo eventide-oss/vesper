@@ -3,14 +3,15 @@
 
 // vesper-github is the GitHub integration of Vesper (ADR-0007): the only
 // part of Vesper that faces the Internet. It receives the webhooks of the
-// GitHub App and, from #128, turns pull requests into PreviewEnvironment
-// objects; the operator does the rest.
+// GitHub App, and turns pull requests into PreviewEnvironment objects; the
+// operator does the rest.
 package main
 
 import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"time"
 
 	// Kubernetes client auth plugins, for out-of-cluster runs.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -34,6 +35,8 @@ var version = "dev"
 
 func main() {
 	var webhookAddr, secretFile, metricsAddr, probeAddr string
+	var appIDFile, privateKeyFile, apiURL string
+	var resyncInterval time.Duration
 	var secureMetrics bool
 	flag.StringVar(&webhookAddr, "webhook-bind-address", ":8080",
 		"The address the webhook endpoint binds to, in plain HTTP: the ingress controller terminates TLS.")
@@ -44,6 +47,14 @@ func main() {
 	flag.BoolVar(&secureMetrics, "metrics-secure", true,
 		"Serve metrics over HTTPS, for authenticated and authorized clients only.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.StringVar(&appIDFile, "app-id-file", "/etc/vesper-github/app-id",
+		"The file that holds the ID of the GitHub App, from a mounted Secret.")
+	flag.StringVar(&privateKeyFile, "private-key-file", "/etc/vesper-github/private-key",
+		"The file that holds the private key of the GitHub App, in PEM, from a mounted Secret.")
+	flag.StringVar(&apiURL, "github-api-url", "",
+		"The URL of the GitHub API; empty for https://api.github.com.")
+	flag.DurationVar(&resyncInterval, "resync-interval", 10*time.Minute,
+		"How often the open pull requests of each allowed repository are read again, to catch lost webhooks.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -78,11 +89,32 @@ func main() {
 		os.Exit(1)
 	}
 
+	app, err := newApp(appIDFile, privateKeyFile, apiURL)
+	if err != nil {
+		log.Error(err, "Failed to read the GitHub App")
+		os.Exit(1)
+	}
+	if resyncInterval < time.Minute {
+		log.Error(nil, "--resync-interval must be at least 1m", "resyncInterval", resyncInterval)
+		os.Exit(1)
+	}
+	queue := github.NewQueue(log.WithName("queue"))
+	reconciler := &github.Reconciler{Client: mgr.GetClient(), API: github.NewClient(app), Enqueue: queue.Enqueue}
+	if err := github.SetupController(mgr, reconciler, queue); err != nil {
+		log.Error(err, "Failed to set up the controller")
+		os.Exit(1)
+	}
+	if err := mgr.Add(&github.Resync{Client: mgr.GetClient(), Queue: queue, Interval: resyncInterval}); err != nil {
+		log.Error(err, "Failed to add the resync")
+		os.Exit(1)
+	}
+
 	receiver, err := github.NewReceiver(github.SecretFile(secretFile), log.WithName("webhook"), metrics.Registry)
 	if err != nil {
 		log.Error(err, "Failed to create the webhook receiver")
 		os.Exit(1)
 	}
+	receiver.OnEvent(queue.Dispatch)
 	if err := mgr.Add(github.NewServer(webhookAddr, receiver)); err != nil {
 		log.Error(err, "Failed to add the webhook server")
 		os.Exit(1)
@@ -103,4 +135,22 @@ func main() {
 		log.Error(err, "Failed to run the manager")
 		os.Exit(1)
 	}
+}
+
+// newApp reads the ID and the private key of the GitHub App from the files
+// of its mounted Secret. Errors name the files, never their content.
+func newApp(idFile, keyFile, apiURL string) (*github.App, error) {
+	idBytes, err := os.ReadFile(idFile) //nolint:gosec // the path is a flag set by the administrator
+	if err != nil {
+		return nil, err
+	}
+	id, err := github.ParseAppID(string(idBytes))
+	if err != nil {
+		return nil, err
+	}
+	key, err := os.ReadFile(keyFile) //nolint:gosec // the path is a flag set by the administrator
+	if err != nil {
+		return nil, err
+	}
+	return github.NewApp(id, key, apiURL, "vesper-github/"+version)
 }

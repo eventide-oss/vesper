@@ -5,7 +5,9 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -168,4 +170,11 @@ func toPullRequest(pr *gh.PullRequest) PullRequest {
 		Fork:    head == nil || !strings.EqualFold(head.GetFullName(), base.GetFullName()),
 		Labels:  labels,
 	}
+}
+
+// IsNotFound reports whether err is a 404 of the GitHub API: a pull request
+// or a repository that does not exist, or that the App no longer reaches.
+func IsNotFound(err error) bool {
+	var response *gh.ErrorResponse
+	return errors.As(err, &response) && response.Response != nil && response.Response.StatusCode == http.StatusNotFound
 }

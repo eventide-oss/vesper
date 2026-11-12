@@ -1,6 +1,7 @@
 # vesper-github, the GitHub integration of Vesper (ADR-0007): optional, next
 # to the operator. It needs the Secret vesper-github in vesper-system, with
-# the key webhook-secret: see docs/development.md#vesper-github.
+# the keys app-id, private-key and webhook-secret of the GitHub App: see
+# docs/development.md#vesper-github.
 namespace: vesper-system
 namePrefix: vesper-
 labels:
