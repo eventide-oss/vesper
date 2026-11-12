@@ -34,6 +34,7 @@
   - [ADR-0004: Count the TTL of a preview from its creation](adr/0004-ttl-semantics.md)
   - [ADR-0005: Isolate each preview on the network](adr/0005-network-isolation.md)
   - [ADR-0006: Serve previews over HTTPS with the default certificate of the ingress controller](adr/0006-preview-tls.md)
+  - [ADR-0007: Integrate with GitHub through a GitHub App and a separate webhook component](adr/0007-github-integration.md)
 - [Learning journal](journal/): notes after each work session, from
   [the template](journal/TEMPLATE.md).
 
