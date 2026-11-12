@@ -47,7 +47,7 @@ func previewWithUID(now time.Time) *unstructured.Unstructured {
 }
 
 func TestGetShowsEvents(t *testing.T) {
-	now := time.Now()
+	now := testNow
 	client := newFakeClient(previewWithUID(now),
 		// Written out of order: printed oldest first.
 		newEvent("e2", previewUID, "Normal", "Ready", "1/1 replicas available", now.Add(-time.Minute)),
@@ -76,7 +76,7 @@ func TestGetShowsEvents(t *testing.T) {
 }
 
 func TestGetWithoutEvents(t *testing.T) {
-	client := newFakeClient(previewWithUID(time.Now()))
+	client := newFakeClient(previewWithUID(testNow))
 	code, stdout, _ := executeWith(t, []string{"get", "pr-42", "-n", "team-a"},
 		func(opts *globalOptions) clientFactory { return &fakeFactory{opts: opts, client: client} })
 	if code != exitOK || !strings.Contains(stdout, "Events:      <none>\n") {
@@ -87,7 +87,7 @@ func TestGetWithoutEvents(t *testing.T) {
 // TestGetEventsForbidden: a user who may read previews but not events still
 // gets the preview, and exit code 0.
 func TestGetEventsForbidden(t *testing.T) {
-	client := newFakeClient(previewWithUID(time.Now()))
+	client := newFakeClient(previewWithUID(testNow))
 	client.PrependReactor("list", "events", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, apierrors.NewForbidden(eventsGVR.GroupResource(), "", errors.New("no"))
 	})
@@ -104,7 +104,7 @@ func TestGetEventsForbidden(t *testing.T) {
 // TestGetJSONHasNoEvents: the JSON output is a stable contract, without
 // events.
 func TestGetJSONHasNoEvents(t *testing.T) {
-	now := time.Now()
+	now := testNow
 	client := newFakeClient(previewWithUID(now), newEvent("e1", previewUID, "Normal", "Ready", "up", now))
 	_, stdout, _ := executeWith(t, []string{"get", "pr-42", "-n", "team-a", "-o", "json"},
 		func(opts *globalOptions) clientFactory { return &fakeFactory{opts: opts, client: client} })

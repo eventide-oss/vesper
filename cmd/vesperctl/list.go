@@ -27,7 +27,7 @@ var previewEnvironmentGVR = schema.GroupVersionResource{
 	Resource: "previewenvironments",
 }
 
-func newListCmd(factory clientFactory) *cobra.Command {
+func newListCmd(factory clientFactory, now func() time.Time) *cobra.Command {
 	var (
 		allNamespaces bool
 		format        output.Format
@@ -40,7 +40,7 @@ func newListCmd(factory clientFactory) *cobra.Command {
 			"namespace with --all-namespaces.",
 		Args: noArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runList(cmd, factory, allNamespaces, format)
+			return runList(cmd, factory, allNamespaces, format, now())
 		},
 	}
 	cmd.Flags().BoolVarP(&allNamespaces, "all-namespaces", "A", false,
@@ -49,7 +49,7 @@ func newListCmd(factory clientFactory) *cobra.Command {
 	return cmd
 }
 
-func runList(cmd *cobra.Command, factory clientFactory, allNamespaces bool, format output.Format) error {
+func runList(cmd *cobra.Command, factory clientFactory, allNamespaces bool, format output.Format, now time.Time) error {
 	client, err := factory.DynamicClient()
 	if err != nil {
 		return err
@@ -78,7 +78,7 @@ func runList(cmd *cobra.Command, factory clientFactory, allNamespaces bool, form
 		_, err := fmt.Fprintln(cmd.ErrOrStderr(), noPreviewsMessage(namespace))
 		return err
 	}
-	return printPreviewTable(cmd.OutOrStdout(), list.Items, time.Now())
+	return printPreviewTable(cmd.OutOrStdout(), list.Items, now)
 }
 
 // listError explains the errors a user can act on.

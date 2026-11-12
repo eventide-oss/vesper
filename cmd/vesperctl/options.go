@@ -5,6 +5,7 @@ package main
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/pflag"
 )
@@ -24,10 +25,14 @@ type globalOptions struct {
 	// getenv reads an environment variable. It is os.Getenv in production
 	// and a fake in tests.
 	getenv func(string) string
+	// now tells the time, to print ages and expiries. It is time.Now in
+	// production, and a fixed time in tests, so that an age does not depend
+	// on the second a test runs in.
+	now func() time.Time
 }
 
 func newGlobalOptions(getenv func(string) string) *globalOptions {
-	return &globalOptions{getenv: getenv}
+	return &globalOptions{getenv: getenv, now: time.Now}
 }
 
 // addFlags registers the global flags on fs, which is meant to be the

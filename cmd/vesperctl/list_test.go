@@ -53,28 +53,34 @@ func newFakeClient(objs ...runtime.Object) *dynamicfake.FakeDynamicClient {
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), listKinds, objs...)
 }
 
-// newPreview returns a PreviewEnvironment created age ago. An empty phase
-// leaves the status unset.
+// testNow is the time of the commands run by executeWith, and the time the
+// fixtures count from: ages and expiries are exact, whatever the second the
+// test runs in (#154). It is a whole second, as creation times are stored.
+var testNow = time.Date(2026, time.November, 12, 12, 0, 0, 0, time.UTC)
+
+// newPreview returns a PreviewEnvironment created age before testNow. An
+// empty phase leaves the status unset.
 func newPreview(namespace, name, phase string, age time.Duration) *unstructured.Unstructured {
 	obj := &unstructured.Unstructured{}
 	obj.SetAPIVersion("vesper.eventide.dev/v1alpha1")
 	obj.SetKind("PreviewEnvironment")
 	obj.SetNamespace(namespace)
 	obj.SetName(name)
-	obj.SetCreationTimestamp(metav1.NewTime(time.Now().Add(-age)))
+	obj.SetCreationTimestamp(metav1.NewTime(testNow.Add(-age)))
 	if phase != "" {
 		obj.Object["status"] = map[string]any{"phase": phase}
 	}
 	return obj
 }
 
-// executeWith runs vesperctl with args against factory, and returns the exit
-// code, stdout and stderr.
+// executeWith runs vesperctl with args against factory, at testNow, and
+// returns the exit code, stdout and stderr.
 func executeWith(t *testing.T, args []string, newFactory func(*globalOptions) clientFactory) (int, string, string) {
 	t.Helper()
 
 	var stdout, stderr bytes.Buffer
 	opts := newGlobalOptions(emptyEnv)
+	opts.now = func() time.Time { return testNow }
 	root := newRootCmd(&stdout, &stderr, opts, newFactory(opts))
 	code := execute(root, args, &stderr)
 	return code, stdout.String(), stderr.String()

@@ -20,7 +20,7 @@ import (
 	"github.com/eventide-oss/vesper/internal/output"
 )
 
-func newGetCmd(factory clientFactory) *cobra.Command {
+func newGetCmd(factory clientFactory, now func() time.Time) *cobra.Command {
 	var format output.Format
 
 	cmd := &cobra.Command{
@@ -31,7 +31,7 @@ func newGetCmd(factory clientFactory) *cobra.Command {
 			"output holds the preview only, not its events.",
 		Args: nameArg,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runGet(cmd, factory, args[0], format)
+			return runGet(cmd, factory, args[0], format, now())
 		},
 	}
 	output.AddFlag(cmd, &format)
@@ -51,7 +51,7 @@ func nameArg(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runGet(cmd *cobra.Command, factory clientFactory, name string, format output.Format) error {
+func runGet(cmd *cobra.Command, factory clientFactory, name string, format output.Format, now time.Time) error {
 	client, err := factory.DynamicClient()
 	if err != nil {
 		return err
@@ -71,7 +71,6 @@ func runGet(cmd *cobra.Command, factory clientFactory, name string, format outpu
 	if format != output.Table {
 		return output.Write(cmd.OutOrStdout(), format, summary)
 	}
-	now := time.Now()
 	if err := printPreviewDetails(cmd.OutOrStdout(), summary, now); err != nil {
 		return err
 	}

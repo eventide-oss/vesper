@@ -160,7 +160,7 @@ func TestPrintPreviewDetailsHidesEnvValues(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	client := newFakeClient(readyPreview(time.Now()))
+	client := newFakeClient(readyPreview(testNow))
 
 	code, stdout, stderr := executeWith(t, []string{"get", "pr-42", "-n", "team-a"},
 		func(opts *globalOptions) clientFactory {
