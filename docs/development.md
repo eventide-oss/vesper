@@ -775,10 +775,29 @@ objects (`internal/github`).
   succeeded on the head commit; a new commit keeps the old image until its
   own is built, then resets the ttl. A `PreviewEnvironment` of the same name
   that the integration did not create is never touched.
+- **On the pull request** (`reporting.go`): a GitHub deployment per commit,
+  in an environment named after the preview (`acme-app-pr-42`), whose status
+  follows the phase (`in_progress`, `success` with the URL, `failure` with
+  the reason, `inactive` when expired or stopped), and one comment, edited in
+  place, found again by a hidden marker. The preview remembers what it showed
+  in its annotations, so GitHub is written to only on a change. A pull
+  request that never had a preview gets nothing. An expired preview is not
+  created again on the same commit: the status of its deployment says
+  `Expired`, and a new commit brings it back.
 - **The GitHub App** authenticates with a JWT signed by its private key, and
   uses installation tokens of one hour, renewed five minutes before they
   expire. Its ID and key are files of the Secret `vesper-github` (`app-id`,
-  `private-key`), next to `webhook-secret`.
+  `private-key`), next to `webhook-secret`. It needs these permissions, and
+  no other:
+
+  | Permission | Access |
+  | --- | --- |
+  | Metadata | Read-only |
+  | Pull requests | Read and write |
+  | Deployments | Read and write |
+  | Actions | Read-only |
+
+  and these events: **Pull request** and **Workflow run**.
 
 - **The webhook endpoint**, `POST /webhook` on port 8080, exposed through the
   ingress controller on a host of its own (`config/github/ingress.yaml`). A

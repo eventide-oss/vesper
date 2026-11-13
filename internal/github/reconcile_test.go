@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -28,6 +29,10 @@ type fakeAPI struct {
 	built   map[string]bool // head commits whose image is built
 	err     error
 	checked int // calls to WorkflowSucceeded
+
+	deployments   []*fakeDeployment
+	comments      map[int]string // by pull request
+	commentWrites int
 }
 
 func (f *fakeAPI) PullRequest(_ context.Context, _ string, number int) (PullRequest, error) {
@@ -56,20 +61,60 @@ func (f *fakeAPI) WorkflowSucceeded(_ context.Context, _, _, sha string) (bool, 
 	return f.built[sha], f.err
 }
 
-func (f *fakeAPI) LatestDeployment(context.Context, string, string, string) (Deployment, error) {
+// fakeDeployment is a deployment the fake API recorded.
+type fakeDeployment struct {
+	id          int64
+	environment string
+	sha         string
+	statuses    []string // "state: description", newest last
+	url         string
+}
+
+func (f *fakeAPI) LatestDeployment(_ context.Context, _, environment, sha string) (Deployment, error) {
+	for i := len(f.deployments) - 1; i >= 0; i-- {
+		d := f.deployments[i]
+		if d.environment == environment && d.sha == sha {
+			out := Deployment{ID: d.id}
+			if n := len(d.statuses); n > 0 {
+				out.State, out.Description, _ = strings.Cut(d.statuses[n-1], ": ")
+			}
+			return out, nil
+		}
+	}
 	return Deployment{}, nil
 }
 
-func (f *fakeAPI) CreateDeployment(context.Context, string, string, string) (int64, error) {
-	return 1, nil
+func (f *fakeAPI) CreateDeployment(_ context.Context, _, environment, sha string) (int64, error) {
+	f.deployments = append(f.deployments, &fakeDeployment{id: int64(len(f.deployments) + 1), environment: environment, sha: sha})
+	return int64(len(f.deployments)), nil
 }
 
-func (f *fakeAPI) SetDeploymentStatus(context.Context, string, int64, string, string, string) error {
+func (f *fakeAPI) SetDeploymentStatus(_ context.Context, _ string, id int64, state, url, description string) error {
+	d := f.deployments[id-1]
+	d.statuses = append(d.statuses, state+": "+description)
+	d.url = url
 	return nil
 }
 
-func (f *fakeAPI) UpsertComment(context.Context, string, int, int64, string, string) (int64, error) {
-	return 1, nil
+func (f *fakeAPI) UpsertComment(_ context.Context, _ string, number int, _ int64, _, body string) (int64, error) {
+	if f.comments == nil {
+		f.comments = map[int]string{}
+	}
+	f.comments[number] = body
+	f.commentWrites++
+	return int64(number), nil
+}
+
+// statuses returns the statuses of the deployments of an environment, in
+// order.
+func (f *fakeAPI) statuses(environment string) []string {
+	var out []string
+	for _, d := range f.deployments {
+		if d.environment == environment {
+			out = append(out, d.statuses...)
+		}
+	}
+	return out
 }
 
 type reconcileFixture struct {

@@ -106,8 +106,27 @@ func (r *Reconciler) resync(ctx context.Context, log logr.Logger, source *vesper
 	return nil
 }
 
+// reconcilePullRequest brings the preview of a pull request in line with
+// GitHub, then shows its state on the pull request.
 func (r *Reconciler) reconcilePullRequest(ctx context.Context, log logr.Logger,
 	source *vesperv1alpha1.PreviewSource, key PullRequestKey) (reconcile.Result, error) {
+	var decision Decision
+	var pr PullRequest
+	result, err := r.apply(ctx, log, source, key, &pr, &decision)
+	if err != nil || decision.Action == "" {
+		return result, err
+	}
+	if err := r.report(ctx, log, source, key, pr, decision); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+// apply creates, updates or deletes the preview of a pull request; it sets
+// pr to the pull request and decision to what it decided, empty if it did
+// not get to decide.
+func (r *Reconciler) apply(ctx context.Context, log logr.Logger,
+	source *vesperv1alpha1.PreviewSource, key PullRequestKey, prOut *PullRequest, decisionOut *Decision) (reconcile.Result, error) {
 	pr, err := r.API.PullRequest(ctx, key.Repository, key.Number)
 	switch {
 	case IsNotFound(err):
@@ -147,6 +166,7 @@ func (r *Reconciler) reconcilePullRequest(ctx context.Context, log logr.Logger,
 		}
 		decision = Decide(source, pr, built, live, now())
 	}
+	*prOut, *decisionOut = pr, decision
 	log = log.WithValues("action", decision.Action, "reason", decision.Reason)
 
 	switch decision.Action {
@@ -176,6 +196,17 @@ func (r *Reconciler) reconcilePullRequest(ctx context.Context, log logr.Logger,
 		return reconcile.Result{RequeueAfter: waitForDeletion}, nil
 	}
 	if current == nil {
+		// An expired preview stays expired until a new commit: GitHub keeps
+		// the record, as the inactive status of its deployment (ADR-0007).
+		latest, err := r.API.LatestDeployment(ctx, key.Repository, decision.Preview.Name, pr.HeadSHA)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		if latest.State == "inactive" && strings.HasPrefix(latest.Description, DescriptionExpired) {
+			log.V(1).Info("preview expired: a new commit brings it back")
+			*decisionOut = Decision{Action: ActionKeep, Reason: "expired"}
+			return reconcile.Result{}, nil
+		}
 		log.Info("creating the preview", "image", decision.Preview.Spec.Image)
 		if err := r.Client.Create(ctx, decision.Preview); err != nil {
 			if apierrors.IsNotFound(err) {

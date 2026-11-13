@@ -5,6 +5,7 @@ package github
 
 import (
 	"context"
+	"strconv"
 
 	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -12,6 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	vesperv1alpha1 "github.com/eventide-oss/vesper/api/v1alpha1"
 )
 
 // maxConcurrentReconciles is how many pull requests are reconciled at once:
@@ -35,5 +38,22 @@ func SetupController(mgr manager.Manager, r *Reconciler, queue *Queue) error {
 			q.Add(e.Object)
 		},
 	}
-	return c.Watch(source.TypedChannel(queue.Events(), enqueue))
+	if err := c.Watch(source.TypedChannel(queue.Events(), enqueue)); err != nil {
+		return err
+	}
+	// A change of a preview of the integration, its phase above all, is
+	// shown on its pull request (#129).
+	return c.Watch(source.TypedKind(mgr.GetCache(), &vesperv1alpha1.PreviewEnvironment{},
+		handler.TypedEnqueueRequestsFromMapFunc(pullRequestOf)))
+}
+
+// pullRequestOf returns the pull request of a preview the integration
+// created, from its labels and annotations; none for other previews.
+func pullRequestOf(_ context.Context, p *vesperv1alpha1.PreviewEnvironment) []PullRequestKey {
+	number, err := strconv.Atoi(p.Labels[LabelPullRequest])
+	repository := p.Annotations[AnnotationRepository]
+	if p.Labels[LabelSource] == "" || err != nil || number <= 0 || !repositoryName.MatchString(repository) {
+		return nil
+	}
+	return []PullRequestKey{NewPullRequestKey(repository, number)}
 }

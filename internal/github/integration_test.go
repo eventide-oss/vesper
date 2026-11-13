@@ -160,6 +160,49 @@ func TestIntegration(t *testing.T) {
 		return p != nil && p.Spec.Image == "ghcr.io/acme/app:pr-43-"+sha1
 	})
 
+	// Reported on the pull request: a deployment in progress, and the comment.
+	waitForGitHub := func(what string, ok func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(20 * time.Second)
+		for !ok() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; deployments %+v, comments %+v", what,
+					gh.Deployments("acme/app"), gh.Comments("acme/app", 43))
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	lastState := func() string {
+		ds := gh.Deployments("acme/app")
+		if len(ds) == 0 || len(ds[len(ds)-1].Statuses) == 0 {
+			return ""
+		}
+		st := ds[len(ds)-1].Statuses
+		return st[len(st)-1].State
+	}
+	comment := func() string {
+		cs := gh.Comments("acme/app", 43)
+		if len(cs) != 1 {
+			return ""
+		}
+		return cs[0].Body
+	}
+	waitForGitHub("a deployment in progress", func() bool {
+		return lastState() == "in_progress" && strings.Contains(comment(), "Your preview is starting")
+	})
+
+	// The operator makes it Ready: the pull request shows its URL.
+	p := preview()
+	p.Status.Phase, p.Status.URL = vesperv1alpha1.PhaseReady, "https://acme-app-pr-43.preview.example.com"
+	if err := c.Status().Update(ctx, p); err != nil {
+		t.Fatal(err)
+	}
+	waitForGitHub("a successful deployment with the URL", func() bool {
+		ds := gh.Deployments("acme/app")
+		return lastState() == "success" && ds[len(ds)-1].Statuses[len(ds[len(ds)-1].Statuses)-1].EnvironmentURL != "" &&
+			strings.Contains(comment(), "Visit preview")
+	})
+
 	// A new commit, built: the preview moves to it.
 	gh.SetPullRequest("acme/app", githubtest.PullRequest{Number: 43, HeadSHA: sha2})
 	gh.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha2, Conclusion: "success"})
@@ -172,4 +215,10 @@ func TestIntegration(t *testing.T) {
 	gh.SetPullRequest("acme/app", githubtest.PullRequest{Number: 43, HeadSHA: sha2, State: "closed"})
 	send("pull_request", strings.Replace(pullRequest, "%s", "closed", 1))
 	waitFor("the deletion", func(p *vesperv1alpha1.PreviewEnvironment) bool { return p == nil })
+	waitForGitHub("the stopped preview", func() bool {
+		return lastState() == "inactive" && strings.Contains(comment(), "Your preview was stopped")
+	})
+	if n := len(gh.Comments("acme/app", 43)); n != 1 {
+		t.Errorf("%d comments on the pull request, want one, edited", n)
+	}
 }
