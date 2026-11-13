@@ -72,8 +72,8 @@ jobs:
       - name: read the GoReleaser version
         id: goreleaser
         run: echo "version=$(make --no-print-directory goreleaser-version)" >> "$GITHUB_OUTPUT"
-      # The release lists install.yaml among its assets.
-      - name: write install.yaml
+      # The release lists install.yaml and install-github.yaml among its assets.
+      - name: write install.yaml and install-github.yaml
         run: make build-installer
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
@@ -82,8 +82,10 @@ jobs:
       - name: check the assets and the version of the binary
         run: |
           cd dist/release
-          cp ../install.yaml .
+          cp ../install.yaml ../install-github.yaml .
           sha256sum --check checksums.txt
+          grep -q '  install-github.yaml$' checksums.txt
+          grep -q 'command:' install-github.yaml && grep -q -- '- /vesper-github' install-github.yaml
           want="vesperctl version v$(jq -r .version metadata.json) "
           got="$(./vesperctl_linux_amd64_v1/vesperctl version)"
           echo "$got"

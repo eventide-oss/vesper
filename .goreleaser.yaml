@@ -54,10 +54,11 @@ archives:
 checksum:
   name_template: checksums.txt
   algorithm: sha256
-  # The install bundle, written by `make build-installer` with the image of
-  # the release, pinned by digest.
+  # The install bundles, written by `make build-installer` with the image of
+  # the release, pinned by digest: the operator, and vesper-github.
   extra_files:
     - glob: dist/install.yaml
+    - glob: dist/install-github.yaml
 
 snapshot:
   version_template: "{{ incpatch .Version }}-snapshot+{{ .ShortCommit }}"
@@ -94,6 +95,7 @@ release:
   name_template: "Vesper v{{ .Version }}"
   extra_files:
     - glob: dist/install.yaml
+    - glob: dist/install-github.yaml
   footer: |
     ## Verify the downloads
 

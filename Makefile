@@ -116,11 +116,14 @@ docker-push: ## Push the manager image.
 # working tree stays clean, which the release needs. IMG may carry a digest:
 # IMG=ghcr.io/eventide-oss/vesper:v0.1.0@sha256:<digest>.
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Write the CRDs and the operator deployment to dist/install.yaml.
-	rm -rf dist/installer && mkdir -p dist/installer
+build-installer: manifests generate kustomize ## Write dist/install.yaml (CRDs, operator) and dist/install-github.yaml (vesper-github).
+	rm -rf dist/installer dist/installer-github && mkdir -p dist/installer dist/installer-github
 	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- ../../config/default\n' > dist/installer/kustomization.yaml
 	cd dist/installer && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build dist/installer > dist/install.yaml
+	printf 'apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n- ../../config/github\n' > dist/installer-github/kustomization.yaml
+	cd dist/installer-github && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	"$(KUSTOMIZE)" build dist/installer-github > dist/install-github.yaml
 
 .PHONY: release-check
 release-check: goreleaser ## Validate .goreleaser.yaml.

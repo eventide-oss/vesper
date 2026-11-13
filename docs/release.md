@@ -21,7 +21,9 @@ only after that click.
   operator Deployment and the metrics Service, rendered from
   `config/default`, with the image pinned by tag **and digest**. What it
   installs is the image the workflow built, even if the tag moved.
-- `checksums.txt`, the SHA-256 of every archive and of `install.yaml`.
+- `install-github.yaml`: `vesper-github`, the GitHub integration, from the
+  same image ([Development](development.md#vesper-github)); optional.
+- `checksums.txt`, the SHA-256 of every archive and of the two bundles.
 - A provenance attestation for every file of `checksums.txt` and for the
   image (stored in the registry, next to it), signed with the identity of the
   workflow run, which records the repository, the tag and the commit it was

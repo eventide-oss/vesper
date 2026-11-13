@@ -815,6 +815,37 @@ objects (`internal/github`).
 - **Metrics**: `vesper_github_webhook_deliveries_total`, by result, on port
   8443, for authorized clients only.
 
+From a release, `install-github.yaml` holds the same manifests with the image
+of the release, pinned by digest. Set the host of the webhook with a kustomize
+overlay, so that an upgrade keeps it. Save this as
+`vesper-github/kustomization.yaml`, with your host:
+
+```yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- https://github.com/eventide-oss/vesper/releases/download/v0.2.0-rc.1/install-github.yaml
+patches:
+- target:
+    kind: Ingress
+    name: vesper-github-webhook
+  patch: |-
+    - op: replace
+      path: /spec/rules/0/host
+      value: hooks.preview.example.com
+    - op: replace
+      path: /spec/tls/0/hosts/0
+      value: hooks.preview.example.com
+```
+
+```sh
+kubectl apply -k vesper-github
+kubectl -n vesper-system rollout status deploy/vesper-github
+```
+
+The Secret `vesper-github` must exist first, with the keys `app-id`,
+`private-key` and `webhook-secret` of the GitHub App.
+
 Try it on the local cluster, with a secret of your own and a signed `ping`:
 
 ```sh

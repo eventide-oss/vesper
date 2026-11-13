@@ -102,15 +102,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # install.yaml names the image by its tag and its digest: what is
-      # installed is the image built above, even if the tag moves.
-      - name: write install.yaml
+      # install.yaml and install-github.yaml name the image by its tag and its
+      # digest: what is installed is the image built above, even if the tag
+      # moves.
+      - name: write install.yaml and install-github.yaml
         env:
           IMAGE: ${{ needs.image.outputs.image }}
           DIGEST: ${{ needs.image.outputs.digest }}
         run: |
           make build-installer IMG="$IMAGE:$GITHUB_REF_NAME@$DIGEST"
           grep -F "image: $IMAGE:$GITHUB_REF_NAME@$DIGEST" dist/install.yaml
+          grep -F "image: $IMAGE:$GITHUB_REF_NAME@$DIGEST" dist/install-github.yaml
       - name: read the GoReleaser version
         id: goreleaser
         run: echo "version=$(make --no-print-directory goreleaser-version)" >> "$GITHUB_OUTPUT"
@@ -120,7 +122,8 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # Every file listed in checksums.txt: the archives and install.yaml.
+      # Every file listed in checksums.txt: the archives, install.yaml and
+      # install-github.yaml.
       # Signed with the OIDC identity of this workflow run:
       # `gh attestation verify <file> --repo <owner>/<repo>`.
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
