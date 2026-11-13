@@ -51,9 +51,9 @@ type API interface {
 	PullRequest(ctx context.Context, repository string, number int) (PullRequest, error)
 	// OpenPullRequests returns the open pull requests of repository.
 	OpenPullRequests(ctx context.Context, repository string) ([]PullRequest, error)
-	// WorkflowSucceeded reports whether a run of the workflow file succeeded
-	// on the commit sha of repository.
-	WorkflowSucceeded(ctx context.Context, repository, file, sha string) (bool, error)
+	// BuildState returns the state of the latest run of the workflow file on
+	// the commit sha of repository.
+	BuildState(ctx context.Context, repository, file, sha string) (BuildState, error)
 
 	// LatestDeployment returns the latest deployment of the commit sha to
 	// environment, with its latest status; a zero Deployment if none.
@@ -71,6 +71,21 @@ type API interface {
 	// returns the ID of the comment.
 	UpsertComment(ctx context.Context, repository string, number int, commentID int64, marker, body string) (int64, error)
 }
+
+// BuildState is the state of the latest run of a workflow on a commit.
+type BuildState string
+
+const (
+	// BuildNone: no run of the workflow on the commit, yet.
+	BuildNone BuildState = "None"
+	// BuildRunning: queued or in progress; the API may also report a run that
+	// just completed as in progress for a few seconds.
+	BuildRunning BuildState = "Running"
+	// BuildSucceeded: the image of the commit is built.
+	BuildSucceeded BuildState = "Succeeded"
+	// BuildFailed: completed without success.
+	BuildFailed BuildState = "Failed"
+)
 
 // Deployment is the latest deployment of a commit to an environment.
 type Deployment struct {
@@ -167,18 +182,30 @@ func (c *Client) OpenPullRequests(ctx context.Context, repository string) ([]Pul
 	}
 }
 
-// WorkflowSucceeded implements API.
-func (c *Client) WorkflowSucceeded(ctx context.Context, repository, file, sha string) (bool, error) {
+// BuildState implements API, from the newest run of the workflow on the
+// commit: a re-run counts over an older run.
+func (c *Client) BuildState(ctx context.Context, repository, file, sha string) (BuildState, error) {
 	client, owner, name, err := c.repoClient(ctx, repository)
 	if err != nil {
-		return false, err
+		return "", err
 	}
 	runs, _, err := client.Actions.ListWorkflowRunsByFileName(ctx, owner, name, file,
-		&gh.ListWorkflowRunsOptions{HeadSHA: sha, Status: "success", ListOptions: gh.ListOptions{PerPage: 1}})
+		&gh.ListWorkflowRunsOptions{HeadSHA: sha, ListOptions: gh.ListOptions{PerPage: 1}})
 	if err != nil {
-		return false, fmt.Errorf("list the runs of %s on %s at %s: %w", file, repository, sha, err)
+		return "", fmt.Errorf("list the runs of %s on %s at %s: %w", file, repository, sha, err)
 	}
-	return runs.GetTotalCount() > 0, nil
+	if len(runs.WorkflowRuns) == 0 {
+		return BuildNone, nil
+	}
+	run := runs.WorkflowRuns[0]
+	switch {
+	case run.GetStatus() != "completed":
+		return BuildRunning, nil
+	case run.GetConclusion() == "success":
+		return BuildSucceeded, nil
+	default:
+		return BuildFailed, nil
+	}
 }
 
 // toPullRequest keeps what Vesper needs of a pull request of the API.

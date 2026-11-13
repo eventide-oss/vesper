@@ -41,9 +41,11 @@ type PullRequest struct {
 
 // Run is a run of a workflow of a fake repository.
 type Run struct {
-	File       string
-	HeadSHA    string
-	Conclusion string // success, failure...
+	File    string
+	HeadSHA string
+	// Status is queued, in_progress or completed; empty means completed.
+	Status     string
+	Conclusion string // success, failure... once completed
 }
 
 // Deployment is a deployment of a fake repository, with its statuses,
@@ -154,12 +156,28 @@ func (s *Server) SetPullRequest(repository string, pr PullRequest) {
 	s.repos[strings.ToLower(repository)].pulls[pr.Number] = pr
 }
 
-// AddRun records a run of a workflow of repository.
+// AddRun records a run of a workflow of repository, newer than the others.
 func (s *Server) AddRun(repository string, run Run) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if run.Status == "" {
+		run.Status = "completed"
+	}
 	r := s.repos[strings.ToLower(repository)]
 	r.runs = append(r.runs, run)
+}
+
+// CompleteRuns completes the runs of file on sha with conclusion, as the API
+// reports it some time after the webhook of their completion.
+func (s *Server) CompleteRuns(repository, file, sha, conclusion string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.repos[strings.ToLower(repository)]
+	for i := range r.runs {
+		if r.runs[i].File == file && r.runs[i].HeadSHA == sha {
+			r.runs[i].Status, r.runs[i].Conclusion = "completed", conclusion
+		}
+	}
 }
 
 // Requests returns how many requests reached route, such as
@@ -313,18 +331,27 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
+	perPage, _ := strconv.Atoi(q.Get("per_page"))
 	s.mu.Lock()
-	var matching []any
-	for i, run := range rp.runs {
+	matching := []any{}
+	for i := len(rp.runs) - 1; i >= 0; i-- { // newest first, as GitHub
+		run := rp.runs[i]
+		// status filters on the status or the conclusion, as GitHub.
 		if run.File == r.PathValue("file") && (q.Get("head_sha") == "" || run.HeadSHA == q.Get("head_sha")) &&
-			(q.Get("status") == "" || run.Conclusion == q.Get("status")) {
-			matching = append(matching, map[string]any{
-				"id": i + 1, "head_sha": run.HeadSHA, "status": "completed", "conclusion": run.Conclusion,
-			})
+			(q.Get("status") == "" || run.Status == q.Get("status") || run.Conclusion == q.Get("status")) {
+			item := map[string]any{"id": i + 1, "head_sha": run.HeadSHA, "status": run.Status, "conclusion": nil}
+			if run.Status == "completed" {
+				item["conclusion"] = run.Conclusion
+			}
+			matching = append(matching, item)
 		}
 	}
 	s.mu.Unlock()
-	writeJSON(w, http.StatusOK, map[string]any{"total_count": len(matching), "workflow_runs": matching})
+	total := len(matching)
+	if perPage > 0 && len(matching) > perPage {
+		matching = matching[:perPage]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"total_count": total, "workflow_runs": matching})
 }
 
 // Deployments returns the deployments of repository, oldest first.

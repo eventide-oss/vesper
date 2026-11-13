@@ -27,8 +27,10 @@ import (
 type fakeAPI struct {
 	prs     map[int]PullRequest
 	built   map[string]bool // head commits whose image is built
+	running map[string]bool // head commits whose build runs
+	failed  map[string]bool // head commits whose build failed
 	err     error
-	checked int // calls to WorkflowSucceeded
+	checked int // calls to BuildState
 
 	deployments   []*fakeDeployment
 	comments      map[int]string // by pull request
@@ -56,9 +58,19 @@ func (f *fakeAPI) OpenPullRequests(context.Context, string) ([]PullRequest, erro
 	return open, f.err
 }
 
-func (f *fakeAPI) WorkflowSucceeded(_ context.Context, _, _, sha string) (bool, error) {
+func (f *fakeAPI) BuildState(_ context.Context, _, _, sha string) (BuildState, error) {
 	f.checked++
-	return f.built[sha], f.err
+	switch {
+	case f.err != nil:
+		return "", f.err
+	case f.built[sha]:
+		return BuildSucceeded, nil
+	case f.running[sha]:
+		return BuildRunning, nil
+	case f.failed[sha]:
+		return BuildFailed, nil
+	}
+	return BuildNone, nil
 }
 
 // fakeDeployment is a deployment the fake API recorded.
@@ -133,7 +145,8 @@ func newReconcileFixture(t *testing.T, objs ...client.Object) *reconcileFixture 
 	source := testSource(vesperv1alpha1.TriggerAll)
 	f := &reconcileFixture{
 		client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(append([]client.Object{source}, objs...)...).Build(),
-		api:    &fakeAPI{prs: map[int]PullRequest{}, built: map[string]bool{}},
+		api: &fakeAPI{prs: map[int]PullRequest{}, built: map[string]bool{}, running: map[string]bool{},
+			failed: map[string]bool{}},
 	}
 	f.r = &Reconciler{Client: f.client, API: f.api, Now: func() time.Time { return decideNow },
 		Enqueue: func(k PullRequestKey) { f.enqueued = append(f.enqueued, k) }}
@@ -361,5 +374,41 @@ func TestReconcileResync(t *testing.T) {
 	slices.Sort(numbers)
 	if !slices.Equal(numbers, []int{1, 2, 4}) {
 		t.Errorf("queued %v, want 1 and 4 (open) and 2 (its preview)", numbers)
+	}
+}
+
+// TestReconcilePollsRunningBuild: a running build is read again after an
+// interval, since the API may report it running for a few seconds after the
+// event of its completion (#184); a failed build, or none, is not.
+func TestReconcilePollsRunningBuild(t *testing.T) {
+	f := newReconcileFixture(t)
+	f.api.prs[1] = PullRequest{Number: 1, Open: true, HeadSHA: sha1}
+
+	for _, tt := range []struct {
+		name     string
+		set      func()
+		wantPoll time.Duration
+	}{
+		{"no run yet", func() {}, 0},
+		{"running", func() { f.api.running[sha1] = true }, defaultBuildPollInterval},
+		{"failed", func() { f.api.running[sha1], f.api.failed[sha1] = false, true }, 0},
+	} {
+		tt.set()
+		if got := f.reconcile(t, 1); got != tt.wantPoll {
+			t.Errorf("%s: requeue after %s, want %s", tt.name, got, tt.wantPoll)
+		}
+		if f.preview(t, 1) != nil {
+			t.Fatalf("%s: a preview before its image is built", tt.name)
+		}
+	}
+
+	f.r.BuildPollInterval = time.Second
+	f.api.failed[sha1], f.api.running[sha1] = false, true
+	if got := f.reconcile(t, 1); got != time.Second {
+		t.Errorf("requeue after %s, want the configured interval", got)
+	}
+	f.api.running[sha1], f.api.built[sha1] = false, true
+	if got := f.reconcile(t, 1); got != 0 || f.preview(t, 1) == nil {
+		t.Errorf("built: requeue %s, preview %v; want the preview and no requeue", got, f.preview(t, 1))
 	}
 }

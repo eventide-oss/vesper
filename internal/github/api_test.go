@@ -99,28 +99,38 @@ func TestOpenPullRequestsPages(t *testing.T) {
 	}
 }
 
-func TestWorkflowSucceeded(t *testing.T) {
+func TestBuildState(t *testing.T) {
 	server, client := newTestClient(t)
+	sha3 := strings.Repeat("3", 40)
 	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha1, Conclusion: "success"})
 	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha2, Conclusion: "failure"})
 	server.AddRun("acme/app", githubtest.Run{File: "lint.yml", HeadSHA: sha2, Conclusion: "success"})
+	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha3, Status: "in_progress"})
+	// A re-run that succeeded after a failure: the newest run counts.
+	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha2, Conclusion: "success"})
 
 	for _, tt := range []struct {
 		file, sha string
-		want      bool
+		want      BuildState
 	}{
-		{"preview.yml", sha1, true},
-		{"preview.yml", sha2, false}, // failed
-		{"lint.yml", sha1, false},    // another workflow
-		{"preview.yml", strings.Repeat("3", 40), false},
+		{"preview.yml", sha1, BuildSucceeded},
+		{"preview.yml", sha2, BuildSucceeded}, // re-run
+		{"lint.yml", sha1, BuildNone},         // another workflow
+		{"preview.yml", sha3, BuildRunning},
+		{"preview.yml", strings.Repeat("4", 40), BuildNone},
 	} {
-		got, err := client.WorkflowSucceeded(context.Background(), "acme/app", tt.file, tt.sha)
+		got, err := client.BuildState(context.Background(), "acme/app", tt.file, tt.sha)
 		if err != nil {
-			t.Fatalf("WorkflowSucceeded(%s, %s): %v", tt.file, tt.sha, err)
+			t.Fatalf("BuildState(%s, %s): %v", tt.file, tt.sha[:7], err)
 		}
 		if got != tt.want {
-			t.Errorf("WorkflowSucceeded(%s, %s) = %v, want %v", tt.file, tt.sha[:7], got, tt.want)
+			t.Errorf("BuildState(%s, %s) = %s, want %s", tt.file, tt.sha[:7], got, tt.want)
 		}
+	}
+
+	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha1, Conclusion: "cancelled"})
+	if got, _ := client.BuildState(context.Background(), "acme/app", "preview.yml", sha1); got != BuildFailed {
+		t.Errorf("a cancelled newest run = %s, want %s", got, BuildFailed)
 	}
 }
 

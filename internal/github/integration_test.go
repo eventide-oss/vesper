@@ -91,7 +91,8 @@ func TestIntegration(t *testing.T) {
 
 	// vesper-github: a long resync, so that the webhooks do the work.
 	queue := NewQueue(logr.Discard())
-	if err := SetupController(mgr, &Reconciler{Client: c, API: NewClient(app), Enqueue: queue.Enqueue}, queue); err != nil {
+	if err := SetupController(mgr, &Reconciler{Client: c, API: NewClient(app), Enqueue: queue.Enqueue,
+		BuildPollInterval: time.Second}, queue); err != nil {
 		t.Fatal(err)
 	}
 	if err := mgr.Add(&Resync{Client: c, Queue: queue, Interval: time.Hour}); err != nil {
@@ -203,10 +204,16 @@ func TestIntegration(t *testing.T) {
 			strings.Contains(comment(), "Visit preview")
 	})
 
-	// A new commit, built: the preview moves to it.
+	// A new commit. As on a real server (#184), the API still reports its run
+	// in progress when the event of its completion arrives, and knows the
+	// success a moment later, without another event: the preview moves to
+	// it all the same.
 	gh.SetPullRequest("acme/app", githubtest.PullRequest{Number: 43, HeadSHA: sha2})
-	gh.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha2, Conclusion: "success"})
+	gh.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha2, Status: "in_progress"})
 	send("pull_request", strings.Replace(pullRequest, "%s", "synchronize", 1))
+	send("workflow_run", `{"action":"completed","repository":{"full_name":"acme/app"},"workflow_run":{"pull_requests":[{"number":43}]}}`)
+	time.Sleep(500 * time.Millisecond)
+	gh.CompleteRuns("acme/app", "preview.yml", sha2, "success")
 	waitFor("the new image", func(p *vesperv1alpha1.PreviewEnvironment) bool {
 		return p != nil && p.Spec.Image == "ghcr.io/acme/app:pr-43-"+sha2
 	})
