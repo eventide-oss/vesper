@@ -46,10 +46,37 @@ type Run struct {
 	Conclusion string // success, failure...
 }
 
+// Deployment is a deployment of a fake repository, with its statuses,
+// newest last.
+type Deployment struct {
+	ID          int64
+	SHA         string
+	Environment string
+	Statuses    []DeploymentStatus
+}
+
+// DeploymentStatus is a status of a fake deployment.
+type DeploymentStatus struct {
+	State          string
+	Description    string
+	EnvironmentURL string
+}
+
+// Comment is a comment on a pull request of a fake repository.
+type Comment struct {
+	ID     int64
+	Number int
+	Body   string
+	// AppID is the App that wrote it; 0 for a person.
+	AppID int64
+}
+
 type repo struct {
 	installation int64
 	pulls        map[int]PullRequest
 	runs         []Run
+	deployments  []*Deployment
+	comments     []*Comment
 }
 
 // Server is a fake GitHub API, started for a test and closed at its end.
@@ -67,6 +94,7 @@ type Server struct {
 	repos    map[string]*repo // by full name, lowercase
 	tokens   map[string]int64 // installation token -> installation ID
 	issued   int
+	nextID   int64
 	requests map[string]int // by route
 }
 
@@ -92,6 +120,13 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.listPulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.getPull)
 	mux.HandleFunc("GET /repos/{owner}/{name}/actions/workflows/{file}/runs", s.listRuns)
+	mux.HandleFunc("GET /repos/{owner}/{name}/deployments", s.listDeployments)
+	mux.HandleFunc("POST /repos/{owner}/{name}/deployments", s.createDeployment)
+	mux.HandleFunc("GET /repos/{owner}/{name}/deployments/{id}/statuses", s.listStatuses)
+	mux.HandleFunc("POST /repos/{owner}/{name}/deployments/{id}/statuses", s.createStatus)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.listComments)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/issues/comments/{id}", s.updateComment)
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -290,6 +325,241 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{"total_count": len(matching), "workflow_runs": matching})
+}
+
+// Deployments returns the deployments of repository, oldest first.
+func (s *Server) Deployments(repository string) []Deployment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Deployment
+	for _, d := range s.repos[strings.ToLower(repository)].deployments {
+		c := *d
+		c.Statuses = append([]DeploymentStatus(nil), d.Statuses...)
+		out = append(out, c)
+	}
+	return out
+}
+
+// Comments returns the comments of the pull request number of repository.
+func (s *Server) Comments(repository string, number int) []Comment {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []Comment
+	for _, c := range s.repos[strings.ToLower(repository)].comments {
+		if c.Number == number {
+			out = append(out, *c)
+		}
+	}
+	return out
+}
+
+// AddComment adds a comment to a pull request of repository, as a person
+// (appID 0) or an App; it returns its ID.
+func (s *Server) AddComment(repository string, number int, body string, appID int64) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.nextID++
+	r := s.repos[strings.ToLower(repository)]
+	r.comments = append(r.comments, &Comment{ID: s.nextID, Number: number, Body: body, AppID: appID})
+	return s.nextID
+}
+
+// DeleteComment deletes the comment id of repository, as a person may.
+func (s *Server) DeleteComment(repository string, id int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.repos[strings.ToLower(repository)]
+	r.comments = slices.DeleteFunc(r.comments, func(c *Comment) bool { return c.ID == id })
+}
+
+func (s *Server) listDeployments(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	s.mu.Lock()
+	items := []any{}
+	for i := len(rp.deployments) - 1; i >= 0; i-- { // newest first, as GitHub
+		d := rp.deployments[i]
+		if (q.Get("sha") == "" || d.SHA == q.Get("sha")) && (q.Get("environment") == "" || d.Environment == q.Get("environment")) {
+			items = append(items, map[string]any{"id": d.ID, "sha": d.SHA, "environment": d.Environment})
+		}
+	}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) createDeployment(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Ref              string   `json:"ref"`
+		Environment      string   `json:"environment"`
+		RequiredContexts []string `json:"required_contexts"`
+		Transient        bool     `json:"transient_environment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Ref == "" || body.RequiredContexts == nil || !body.Transient {
+		writeError(w, http.StatusUnprocessableEntity, "a deployment needs a ref, required_contexts and transient_environment")
+		return
+	}
+	s.mu.Lock()
+	s.nextID++
+	d := &Deployment{ID: s.nextID, SHA: body.Ref, Environment: body.Environment}
+	rp.deployments = append(rp.deployments, d)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, map[string]any{"id": d.ID, "sha": d.SHA, "environment": d.Environment})
+}
+
+func (s *Server) deployment(rp *repo, r *http.Request) *Deployment {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	for _, d := range rp.deployments {
+		if d.ID == id {
+			return d
+		}
+	}
+	return nil
+}
+
+func (s *Server) listStatuses(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d := s.deployment(rp, r)
+	if d == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	items := []any{}
+	for i := len(d.Statuses) - 1; i >= 0; i-- { // newest first, as GitHub
+		items = append(items, map[string]any{"state": d.Statuses[i].State, "description": d.Statuses[i].Description})
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) createStatus(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		State          string `json:"state"`
+		Description    string `json:"description"`
+		EnvironmentURL string `json:"environment_url"`
+		AutoInactive   *bool  `json:"auto_inactive"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len([]rune(body.Description)) > 140 {
+		writeError(w, http.StatusUnprocessableEntity, "invalid status, or a description over 140 characters")
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d := s.deployment(rp, r)
+	if d == nil {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	d.Statuses = append(d.Statuses, DeploymentStatus{State: body.State, Description: body.Description,
+		EnvironmentURL: body.EnvironmentURL})
+	// As GitHub: a success makes the other deployments of the environment
+	// inactive, unless auto_inactive is false.
+	if body.State == "success" && (body.AutoInactive == nil || *body.AutoInactive) {
+		for _, other := range rp.deployments {
+			if other != d && other.Environment == d.Environment && len(other.Statuses) > 0 &&
+				other.Statuses[len(other.Statuses)-1].State != "inactive" {
+				other.Statuses = append(other.Statuses, DeploymentStatus{State: "inactive"})
+			}
+		}
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"state": body.State})
+}
+
+func (s *Server) listComments(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	number, _ := strconv.Atoi(r.PathValue("number"))
+	s.mu.Lock()
+	items := []any{}
+	for _, c := range rp.comments {
+		if c.Number == number {
+			items = append(items, commentJSON(c))
+		}
+	}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) createComment(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Body == "" {
+		writeError(w, http.StatusUnprocessableEntity, "a comment needs a body")
+		return
+	}
+	number, _ := strconv.Atoi(r.PathValue("number"))
+	s.mu.Lock()
+	s.nextID++
+	c := &Comment{ID: s.nextID, Number: number, Body: body.Body, AppID: s.AppID}
+	rp.comments = append(rp.comments, c)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, commentJSON(c))
+}
+
+func (s *Server) updateComment(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Body string `json:"body"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Body == "" {
+		writeError(w, http.StatusUnprocessableEntity, "a comment needs a body")
+		return
+	}
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range rp.comments {
+		if c.ID == id {
+			if c.AppID != s.AppID {
+				// An App can edit only its own comments.
+				writeError(w, http.StatusForbidden, "Resource not accessible by integration")
+				return
+			}
+			c.Body = body.Body
+			writeJSON(w, http.StatusOK, commentJSON(c))
+			return
+		}
+	}
+	writeError(w, http.StatusNotFound, "Not Found")
+}
+
+func commentJSON(c *Comment) map[string]any {
+	out := map[string]any{"id": c.ID, "body": c.Body, "performed_via_github_app": nil}
+	if c.AppID != 0 {
+		out["performed_via_github_app"] = map[string]any{"id": c.AppID}
+	}
+	return out
 }
 
 func pullJSON(r *http.Request, pr PullRequest) map[string]any {

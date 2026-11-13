@@ -200,3 +200,78 @@ func TestParseAppID(t *testing.T) {
 		}
 	}
 }
+
+func TestDeployments(t *testing.T) {
+	server, client := newTestClient(t)
+	ctx := context.Background()
+
+	if d, err := client.LatestDeployment(ctx, "acme/app", "acme-app-pr-1", sha1); err != nil || d.ID != 0 {
+		t.Fatalf("LatestDeployment before any = %+v, %v; want none", d, err)
+	}
+	id, err := client.CreateDeployment(ctx, "acme/app", "acme-app-pr-1", sha1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, _ := client.LatestDeployment(ctx, "acme/app", "acme-app-pr-1", sha1); d.ID != id || d.State != "" {
+		t.Errorf("LatestDeployment without status = %+v, want ID %d and no state", d, id)
+	}
+	if err := client.SetDeploymentStatus(ctx, "acme/app", id, "success", "https://p.example.com", "ready"); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("é", 200)
+	if err := client.SetDeploymentStatus(ctx, "acme/app", id, "inactive", "", long); err != nil {
+		t.Fatalf("a long description was not cut to what GitHub accepts: %v", err)
+	}
+	d, err := client.LatestDeployment(ctx, "acme/app", "acme-app-pr-1", sha1)
+	if err != nil || d.ID != id || d.State != "inactive" || len([]rune(d.Description)) != maxDescription {
+		t.Errorf("LatestDeployment = %+v, %v; want the inactive status, cut to %d", d, err, maxDescription)
+	}
+	got := server.Deployments("acme/app")
+	if len(got) != 1 || got[0].Statuses[0].EnvironmentURL != "https://p.example.com" {
+		t.Errorf("deployments = %+v", got)
+	}
+
+	// Another environment, or another commit: not the same deployment.
+	if d, _ := client.LatestDeployment(ctx, "acme/app", "acme-app-pr-2", sha1); d.ID != 0 {
+		t.Errorf("deployment of another environment found: %+v", d)
+	}
+	if d, _ := client.LatestDeployment(ctx, "acme/app", "acme-app-pr-1", sha2); d.ID != 0 {
+		t.Errorf("deployment of another commit found: %+v", d)
+	}
+}
+
+func TestUpsertComment(t *testing.T) {
+	server, client := newTestClient(t)
+	ctx := context.Background()
+	marker := Marker("acme-app-pr-5")
+
+	// A person quotes the marker: the App does not take that comment.
+	server.AddComment("acme/app", 5, "look: "+marker, 0)
+
+	id, err := client.UpsertComment(ctx, "acme/app", 5, 0, marker, marker+"\nfirst")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Known ID: edited in place.
+	if again, err := client.UpsertComment(ctx, "acme/app", 5, id, marker, marker+"\nsecond"); err != nil || again != id {
+		t.Fatalf("UpsertComment with its ID = %d, %v; want %d", again, err, id)
+	}
+	// ID lost (the preview was deleted): found by its marker.
+	if again, err := client.UpsertComment(ctx, "acme/app", 5, 0, marker, marker+"\nthird"); err != nil || again != id {
+		t.Fatalf("UpsertComment by marker = %d, %v; want %d", again, err, id)
+	}
+	comments := server.Comments("acme/app", 5)
+	if len(comments) != 2 || comments[0].Body != "look: "+marker || comments[1].Body != marker+"\nthird" {
+		t.Errorf("comments = %+v, want the person's untouched and one of the App", comments)
+	}
+
+	// Its comment deleted by someone: a new one.
+	server.DeleteComment("acme/app", id)
+	newID, err := client.UpsertComment(ctx, "acme/app", 5, id, marker, marker+"\nfourth")
+	if err != nil || newID == id {
+		t.Fatalf("UpsertComment after deletion = %d, %v; want a new comment", newID, err)
+	}
+	if n := len(server.Comments("acme/app", 5)); n != 2 {
+		t.Errorf("%d comments, want 2", n)
+	}
+}

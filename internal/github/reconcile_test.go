@@ -56,6 +56,22 @@ func (f *fakeAPI) WorkflowSucceeded(_ context.Context, _, _, sha string) (bool, 
 	return f.built[sha], f.err
 }
 
+func (f *fakeAPI) LatestDeployment(context.Context, string, string, string) (Deployment, error) {
+	return Deployment{}, nil
+}
+
+func (f *fakeAPI) CreateDeployment(context.Context, string, string, string) (int64, error) {
+	return 1, nil
+}
+
+func (f *fakeAPI) SetDeploymentStatus(context.Context, string, int64, string, string, string) error {
+	return nil
+}
+
+func (f *fakeAPI) UpsertComment(context.Context, string, int, int64, string, string) (int64, error) {
+	return 1, nil
+}
+
 type reconcileFixture struct {
 	client   client.Client
 	api      *fakeAPI
