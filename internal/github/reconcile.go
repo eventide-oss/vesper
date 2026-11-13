@@ -25,6 +25,11 @@ import (
 // a preview being deleted, to create it again.
 const waitForDeletion = 5 * time.Second
 
+// defaultBuildPollInterval is how long the reconciler waits before it reads a
+// running build again: the API can report a run as running for a few seconds
+// after its workflow_run of completion arrives (#184).
+const defaultBuildPollInterval = 30 * time.Second
+
 // PullRequestKey is the request of the queue of the integration: a pull
 // request of a repository. Number 0 asks for the whole repository: its open
 // pull requests and its previews, as the resync does (ADR-0007).
@@ -51,6 +56,9 @@ type Reconciler struct {
 	Enqueue func(PullRequestKey)
 	// Now tells the time; time.Now if nil.
 	Now func() time.Time
+	// BuildPollInterval is how long to wait before reading a running build
+	// again; 30 seconds if zero.
+	BuildPollInterval time.Duration
 }
 
 // Reconcile brings the preview of a pull request, or of every pull request
@@ -159,20 +167,30 @@ func (r *Reconciler) apply(ctx context.Context, log logr.Logger,
 		now = r.Now
 	}
 	decision := Decide(source, pr, source.Spec.BuildWorkflow == "", live, now())
+	var poll time.Duration
 	if decision.Action == ActionKeep && source.Spec.BuildWorkflow != "" {
-		built, err := r.API.WorkflowSucceeded(ctx, key.Repository, source.Spec.BuildWorkflow, pr.HeadSHA)
+		build, err := r.API.BuildState(ctx, key.Repository, source.Spec.BuildWorkflow, pr.HeadSHA)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		decision = Decide(source, pr, built, live, now())
+		decision = Decide(source, pr, build == BuildSucceeded, live, now())
+		// A running build is read again soon, rather than on the next event:
+		// the event of its completion may come before the API knows it. A
+		// failed build, or none yet, waits for its next event.
+		if decision.Action == ActionKeep && build == BuildRunning {
+			poll = r.BuildPollInterval
+			if poll == 0 {
+				poll = defaultBuildPollInterval
+			}
+		}
 	}
 	*prOut, *decisionOut = pr, decision
 	log = log.WithValues("action", decision.Action, "reason", decision.Reason)
 
 	switch decision.Action {
 	case ActionKeep:
-		log.V(1).Info("preview kept")
-		return reconcile.Result{}, nil
+		log.V(1).Info("preview kept", "checkAgainIn", poll.String())
+		return reconcile.Result{RequeueAfter: poll}, nil
 	case ActionNone:
 		if current == nil || deleting {
 			log.V(1).Info("no preview")
