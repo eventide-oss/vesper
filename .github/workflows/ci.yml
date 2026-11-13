@@ -101,6 +101,27 @@ jobs:
           persist-credentials: false
       - run: make check-license
 
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Pinned, so that a new ShellCheck release cannot turn a pull request red
+      # on its own. Bump it here and in docs/development.md together.
+      SHELLCHECK_VERSION: v0.11.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: install shellcheck
+        run: |
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          curl -fsSL -o shellcheck.tar.xz "$url"
+          tar -xJf shellcheck.tar.xz
+          echo "$PWD/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
+      - run: shellcheck --version
+      - run: make shellcheck
+
   lint:
     name: lint
     runs-on: ubuntu-latest

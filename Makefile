@@ -92,6 +92,10 @@ lint: ## Run golangci-lint (install it first, see docs/development.md).
 check-license: ## Fail if a Go file has no license header.
 	hack/check-license.sh
 
+.PHONY: shellcheck
+shellcheck: ## Check the scripts of hack/ with ShellCheck (install it first, see docs/development.md).
+	shellcheck hack/*.sh
+
 ##@ Build
 
 .PHONY: build
