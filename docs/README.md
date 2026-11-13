@@ -10,6 +10,9 @@
   step by step, and the life of a preview.
 - [CRD reference](crd-reference.md): every field of `PreviewEnvironment` and
   `PreviewSource`, generated from the Go types (`make docs-reference`).
+- [Previews from pull requests](github-integration.md): the GitHub
+  integration, from the GitHub App to a preview on each pull request, with
+  [an example workflow](../examples/github-actions/preview.yml).
 - [Allow a repository](preview-sources.md): the `PreviewSource` of a
   repository, for the GitHub integration of v0.2.
 - [Troubleshooting](troubleshooting.md): what each phase and reason means,

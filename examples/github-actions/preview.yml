@@ -1,0 +1,49 @@
+# Builds the image of each pull request for Vesper, and pushes it to the
+# GitHub Container Registry. Copy it to .github/workflows/preview.yml in the
+# repository of your application, then set IMAGE.
+#
+# Vesper never builds code: it waits for this workflow to succeed on the head
+# commit of a pull request, then deploys the image it pushed. The tag must be
+# the one the PreviewSource of the repository expects: with
+#   image: ghcr.io/acme/app:pr-{{number}}-{{sha}}
+#   buildWorkflow: preview.yml
+# this workflow pushes ghcr.io/acme/app:pr-42-<head commit> for pull request 42.
+#
+# See docs/github-integration.md.
+name: Preview
+
+on:
+  pull_request:
+
+# Read-only by default; only the job below may push packages.
+permissions:
+  contents: read
+
+env:
+  # The image of the PreviewSource, without the tag, in lowercase.
+  IMAGE: ghcr.io/acme/app
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The head commit of the pull request, not github.sha: for a pull
+      # request, github.sha is a merge commit that GitHub makes, and Vesper
+      # looks for the image of the head commit.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          tags: ${{ env.IMAGE }}:pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
