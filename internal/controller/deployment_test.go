@@ -197,7 +197,10 @@ func TestDeploymentAvailable(t *testing.T) {
 		{"all available", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 2, AvailableReplicas: 2}, true, "2/2 replicas available"},
 		{"some starting", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 2, AvailableReplicas: 1}, false, "1/2 replicas available"},
 		{"latest spec not seen", 3, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 2, AvailableReplicas: 2}, false, "2/2 replicas available"},
-		{"old pods still running", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 3, UpdatedReplicas: 2, AvailableReplicas: 2}, false, "2/2 replicas available"},
+		{"old pods still running", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 3, UpdatedReplicas: 2, AvailableReplicas: 2}, false, "rolling out: 2/2 replicas updated, 2/2 available"},
+		{"first start, no pod yet", 1, appsv1.DeploymentStatus{ObservedGeneration: 1}, false, "0/2 replicas available"},
+		{"rollout in progress", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 0, AvailableReplicas: 2}, false, "rolling out: 0/2 replicas updated, 2/2 available"},
+		{"rollout half done", 2, appsv1.DeploymentStatus{ObservedGeneration: 2, Replicas: 2, UpdatedReplicas: 1, AvailableReplicas: 1}, false, "rolling out: 1/2 replicas updated, 1/2 available"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
