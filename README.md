@@ -113,9 +113,12 @@ How it will work under the hood:
   <img src="docs/images/under-the-hood-v0.3.png" width="100%" alt="Concept of a multi-service preview. 1, the pull request sends a signed webhook to Vesper. 2, Vesper creates a namespace where an Ingress leads to web, web calls api, and api calls postgres, all inside a default-deny NetworkPolicy. 3, Vesper comments the URL and the status of each component on the pull request. 4, when the pull request closes or the TTL ends, the namespace and the whole stack are deleted.">
 </p>
 
-These are concepts. The GitHub integration is planned in the
-[v0.2 milestone](https://github.com/eventide-oss/vesper/milestone/6); the
-multi-service previews in the [v0.3 milestone](https://github.com/eventide-oss/vesper/milestone/7),
+The GitHub integration is available to try from
+[v0.2.0-rc.2](https://github.com/eventide-oss/vesper/releases/tag/v0.2.0-rc.2):
+[Previews from pull requests](docs/github-integration.md) sets it up, and
+[vesper-demo](https://github.com/eventide-oss/vesper-demo) shows it live.
+The rest of v0.2 is in its [milestone](https://github.com/eventide-oss/vesper/milestone/6).
+The multi-service previews are concepts, planned in the [v0.3 milestone](https://github.com/eventide-oss/vesper/milestone/7),
 whose design starts with [#162](https://github.com/eventide-oss/vesper/issues/162):
 the shape of the API is not decided yet.
 

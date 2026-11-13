@@ -6,10 +6,9 @@ integration: a pull request of a repository without a `PreviewSource` gets no
 preview, even if the GitHub App of Vesper is installed on it
 ([ADR-0007](adr/0007-github-integration.md)).
 
-> `vesper-github`, the GitHub integration of v0.2, reads the sources
-> ([Development](development.md#vesper-github)). Until v0.2 is released,
-> a `PreviewSource` is accepted and validated, and used only by a
-> `vesper-github` built from `main`.
+> `vesper-github`, the GitHub integration of v0.2, reads the sources.
+> [Previews from pull requests](github-integration.md) sets it up, from the
+> GitHub App to the first preview.
 
 ## Who creates it
 
