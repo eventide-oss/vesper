@@ -245,8 +245,9 @@ GitHub creates the package at the first push, with the default visibility of
 the organization, often private. After the first run of the workflow, open
 the package, at
 `https://github.com/orgs/acme/packages/container/app/settings`, then
-**Danger Zone → Change visibility → Public**. A private image leaves the
-preview in `ImagePullBackOff`; it starts on its own once the image is public.
+**Danger Zone → Change visibility → Public**. With a private image, the
+comment says *Your preview failed* with `ImagePullFailed`; the preview starts
+on its own once the image is public.
 
 ### B4. Allow the repository
 
@@ -340,7 +341,7 @@ account that owns it. For the repositories of another organization, either:
 | No comment, and the log says `no PreviewSource` | the repository is not allowed | create its source (B4) |
 | No comment, and the log asks `does the namespace ... exist?` | the namespace of the source is missing | create it (B4) |
 | No comment, and the workflow is green | the image tag does not match, or the workflow is not the `buildWorkflow` | compare the tag with `image` of the source, and use `head.sha` (B2) |
-| The preview stays starting, its pod is in `ImagePullBackOff` | the image is private | make it public (B3) |
+| The comment says `ImagePullFailed` with `unauthorized` or `denied` | the image is private | make it public (B3) |
 | The pod is rejected | the image runs as root, or on a port below 1024 | use a non-root image (B2), see [Troubleshooting](troubleshooting.md) |
 | The push of the workflow fails with `denied` | the job lacks `packages: write`, or the package belongs to another repository | keep the permissions of the example, and grant the repository access to the package in its settings |
 

@@ -160,6 +160,7 @@ var apiServerEndpointsChanged = predicate.Funcs{
 // server. Pass it as cache.Options.ByObject.
 func CacheByObject() map[client.Object]cache.ByObject {
 	return map[client.Object]cache.ByObject{
+		&corev1.Pod{}: podCache(),
 		&discoveryv1.EndpointSlice{}: {
 			Namespaces: map[string]cache.Config{apiServerNamespace: {}},
 			Label:      labels.SelectorFromSet(labels.Set{discoveryv1.LabelServiceName: apiServerService}),

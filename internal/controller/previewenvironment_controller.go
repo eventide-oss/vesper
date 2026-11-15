@@ -14,6 +14,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -69,6 +70,7 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // The operator reads the EndpointSlices of the API server only, in "default"
 // (CacheByObject). The right is cluster-wide because the install bundle puts
 // every namespaced object in the namespace of the operator: a Role in
@@ -156,9 +158,17 @@ func (r *PreviewEnvironmentReconciler) ensureObjects(
 	if err != nil {
 		return partial, err
 	}
-	// The Deployment's status changes as its pods start: its watch brings the
-	// preview back here, and the status follows.
-	available, phase := availableCondition(deployment)
+	// The Deployment's status changes as its pods start, and the pods' as
+	// they fail: their watches bring the preview back here, and the status
+	// follows.
+	var pods []corev1.Pod
+	if ok, _ := deploymentAvailable(deployment); !ok {
+		if pods, err = r.listPods(ctx, preview, name); err != nil {
+			return partial, err
+		}
+	}
+	available, phase := availableCondition(deployment, pods,
+		meta.FindStatusCondition(preview.Status.Conditions, vesperv1alpha1.ConditionAvailable))
 	return statusUpdate{
 		namespace:   name,
 		url:         url,
@@ -260,6 +270,12 @@ func (r *PreviewEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error 
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		Watches(&networkingv1.NetworkPolicy{},
+			handler.EnqueueRequestsFromMapFunc(previewOfObject),
+			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
+		// The pods tell at once why a preview does not start: an image that
+		// cannot be pulled, an application that keeps crashing (#107). The
+		// cache holds only the pods of previews (CacheByObject).
+		Watches(&corev1.Pod{},
 			handler.EnqueueRequestsFromMapFunc(previewOfObject),
 			builder.WithPredicates(predicate.NewPredicateFuncs(managedByVesper))).
 		// The policy of every preview denies the public addresses of the

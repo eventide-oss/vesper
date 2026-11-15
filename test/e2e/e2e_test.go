@@ -240,6 +240,41 @@ func checkConditionsAndEvents(t *testing.T, c client.Client, preview *vesperv1al
 	})
 }
 
+// TestPreviewImagePullFailed creates a preview whose image cannot be pulled,
+// and waits until the operator reports it, well before the progress deadline
+// of the Deployment (#107). The registry refuses the connection, so the test
+// needs no network.
+func TestPreviewImagePullFailed(t *testing.T) {
+	ctx := context.Background()
+	c := newClient(t)
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "vesper-e2e-"}}
+	if err := c.Create(ctx, ns); err != nil {
+		t.Fatalf("create namespace: %v", err)
+	}
+	preview := &vesperv1alpha1.PreviewEnvironment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name, Name: "missing-image"},
+		Spec:       vesperv1alpha1.PreviewEnvironmentSpec{Image: "localhost:1/vesper-e2e/missing:1.0", Port: 8080},
+	}
+	t.Cleanup(func() { cleanup(t, c, ns.Name, controller.NamespaceName(preview.Namespace, preview.Name)) })
+	if err := c.Create(ctx, preview); err != nil {
+		t.Fatalf("create preview: %v", err)
+	}
+
+	eventually(t, time.Minute, func() error {
+		var p vesperv1alpha1.PreviewEnvironment
+		if err := c.Get(ctx, client.ObjectKeyFromObject(preview), &p); err != nil {
+			return err
+		}
+		ready := meta.FindStatusCondition(p.Status.Conditions, vesperv1alpha1.ConditionReady)
+		if p.Status.Phase != vesperv1alpha1.PhaseFailed || ready == nil ||
+			ready.Reason != vesperv1alpha1.ReasonImagePullFailed {
+			return fmt.Errorf("phase %q, Ready condition %+v", p.Status.Phase, ready)
+		}
+		return nil
+	})
+}
+
 // waitForReady waits until the operator reports the preview Ready, with the
 // namespace where it runs.
 func waitForReady(t *testing.T, c client.Client, preview *vesperv1alpha1.PreviewEnvironment) {
