@@ -100,8 +100,36 @@ code is not reviewed.
 - `forkPullRequests: Deny`, the default: they get no preview.
 - `forkPullRequests: RequireLabel`: they get one once someone with write
   access to the repository adds the label `preview`, whatever the trigger.
-  Read the code before you add it: the preview runs it on the cluster, within
-  the isolation of Vesper ([security model](security.md)).
+
+**The risk.** The preview runs the code of a stranger on your cluster, with
+the network access and the resources the isolation of Vesper gives a
+preview ([security model](security.md)). Adding the label means *I read this
+code and I accept to run it*. Read it first, the workflow that builds it too.
+
+How the label approves a commit:
+
+- Only the label of someone with the permission write, maintain or admin
+  counts. Vesper asks GitHub who added it last; triage can add labels, but
+  approves nothing. A label added by someone else deletes the preview.
+- The label approves the commits pushed **before** it, never the later ones:
+  otherwise the author could push new code once a maintainer approved the
+  old one. Vesper compares the time of the label with the creation of the
+  run of `buildWorkflow` on the commit, which GitHub sets, unlike the date of
+  a commit. When a new commit comes after the label, the preview stays on
+  the approved commit, and the comment says so: remove the label and add it
+  again to run the new one.
+- Forks need `buildWorkflow`: without it, nothing tells when a commit was
+  pushed, and no fork gets a preview.
+- Do not make `buildWorkflow` run on the `labeled` event: its new run would
+  look like a commit pushed after the label, and nothing would be approved.
+  Reopening a pull request starts a new run too: add the label again then.
+
+**The image.** On a pull request from a fork, GitHub gives the workflow a
+read-only token, and no secrets: the workflow of the [GitHub
+guide](github-integration.md) cannot push the image of a fork. Until Vesper
+documents a safe way to build them
+([#189](https://github.com/eventide-oss/vesper/issues/189)), use
+`RequireLabel` only if your CI already pushes images of forks.
 
 ### The defaults
 

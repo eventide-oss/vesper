@@ -770,8 +770,10 @@ objects (`internal/github`).
   never trusting the payload for its state, so that late, repeated or lost
   deliveries all end the same way.
 - **The decision** (`decide.go`): no preview for a closed pull request, a
-  draft, a fork, `no-preview` (trigger `All`) or no `preview` (trigger
-  `Label`); otherwise the preview of the source, once the `buildWorkflow`
+  draft, a fork that is not approved, `no-preview` (trigger `All`) or no
+  `preview` (trigger `Label`). A fork is approved (`approveFork` in
+  `reconcile.go`) when someone with write access last added `preview` after
+  the run of `buildWorkflow` on its head commit was created; otherwise the preview of the source, once the `buildWorkflow`
   succeeded on the head commit; a new commit keeps the old image until its
   own is built, then resets the ttl. A `PreviewEnvironment` of the same name
   that the integration did not create is never touched.
