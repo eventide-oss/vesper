@@ -65,6 +65,9 @@ kubectl events -n "$NS"
 
 Wait: a first pull of a large image takes a while. If it lasts, the pods are
 usually the cause, so read them as for [`RolloutStuck`](#failed-rolloutstuck).
+An image that cannot be pulled and an application that keeps crashing are
+reported at once, as [`ImagePullFailed`](#failed-imagepullfailed) and
+[`CrashLooping`](#failed-crashlooping).
 
 ### Ready `DeploymentAvailable`
 
@@ -99,10 +102,41 @@ The fix is to need less room or to have more:
 
 The preview goes back to `Ready` by itself once the pods fit.
 
+### Failed `ImagePullFailed`
+
+A pod of the preview cannot pull its image. The operator reads the pods, so it
+says so within seconds, with the error of the kubelet in the message: `not
+found` is a tag that does not exist, `unauthorized` or `denied` a private
+image, a connection error a registry the cluster cannot reach.
+
+```sh
+kubectl describe pe demo       # the message of the Ready condition
+kubectl describe pod -n "$NS" -l app.kubernetes.io/name=preview-app
+```
+
+Check the name and the tag with `docker pull`. With the GitHub integration,
+the preview starts on its own once the image exists and can be pulled: the
+kubelet keeps trying, and the operator follows.
+
+### Failed `CrashLooping`
+
+The application starts and exits again and again; Kubernetes waits longer
+before each restart. The message gives the last exit code and the command to
+read the logs of the run that failed.
+
+```sh
+kubectl logs -n "$NS" deploy/app --previous
+```
+
+The port, an environment variable or the command of the image is usually
+wrong. Exit code 137 with `OOMKilled` means the application needs more memory
+than the limit of the operator (`--default-memory-limit`).
+
 ### Failed `RolloutStuck`
 
-The Deployment made no progress for its progress deadline, 10 minutes. The
-cause is in the pods, and `kubectl get pods` names it.
+The Deployment made no progress for its progress deadline, 10 minutes, for a
+cause the operator does not report as `ImagePullFailed` or `CrashLooping`. It
+is in the pods, and `kubectl get pods` names it.
 
 ```sh
 kubectl get pods -n "$NS"

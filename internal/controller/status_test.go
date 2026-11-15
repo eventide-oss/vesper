@@ -106,7 +106,7 @@ func TestAvailableCondition(t *testing.T) {
 				Spec:       appsv1.DeploymentSpec{Replicas: ptr.To[int32](1)},
 				Status:     tt.status,
 			}
-			got, phase := availableCondition(d)
+			got, phase := availableCondition(d, nil, nil)
 			if got != tt.want || phase != tt.wantPhase {
 				t.Errorf("availableCondition = %+v, %s, want %+v, %s", got, phase, tt.want, tt.wantPhase)
 			}

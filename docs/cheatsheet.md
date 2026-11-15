@@ -121,7 +121,9 @@ condition:
 | --- | --- | --- |
 | `Pending`, `Provisioning` | the pods are starting | wait; if it lasts, `kubectl get pods -n $NS` |
 | `Failed`, `PodsRejected` | the API server refuses the pods, often because the quota is full | read the message; lower `--replicas`, or start the operator with a larger quota |
-| `Failed`, `RolloutStuck` | no progress for 10 minutes | `kubectl get pods -n $NS`: `ImagePullBackOff` is a wrong image, `CrashLoopBackOff` an application that crashes (`kubectl logs`), `CreateContainerConfigError` an image that runs as root |
+| `Failed`, `ImagePullFailed` | the image cannot be pulled | read the message: a wrong tag, a private image, an unreachable registry |
+| `Failed`, `CrashLooping` | the application keeps exiting | `kubectl logs -n $NS deploy/app --previous` |
+| `Failed`, `RolloutStuck` | no progress for 10 minutes | `kubectl get pods -n $NS`: `CreateContainerConfigError` is an image that runs as root |
 | `Failed`, `NamespaceConflict` | the preview namespace exists and is not Vesper's | delete that namespace, or choose another name |
 | `Failed`, `ReconcileError` | the operator failed | read the message, and the logs of the operator |
 | `Expired` | the ttl has passed | the preview is being deleted; create it again |

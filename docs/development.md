@@ -144,7 +144,9 @@ message:
 | `Available` | True `DeploymentAvailable` | every replica runs the requested image |
 | | False `Provisioning` | the pods are starting ("1/2 replicas available") |
 | | False `PodsRejected` | the API server rejects the pods, for example because the [quota](#resource-limits) is full; the message gives its error |
-| | False `RolloutStuck` | no progress for the progress deadline of the Deployment, 10 minutes: often an image that cannot be pulled, or a container that keeps crashing. Look at the pods of the preview namespace |
+| | False `ImagePullFailed` | a pod of the current image cannot pull it; the message gives the error of the kubelet |
+| | False `CrashLooping` | the application of a pod of the current image keeps exiting; the message gives its last exit code |
+| | False `RolloutStuck` | no progress for the progress deadline of the Deployment, 10 minutes, for another cause. Look at the pods of the preview namespace |
 | | False `NamespaceConflict` | the namespace of the preview exists and is not Vesper's |
 | `Expired` | False `TTLNotReached` | the message gives the expiry |
 | | True `TTLPassed` | the ttl has passed: the preview is being deleted |
@@ -162,8 +164,14 @@ when the phase is `Failed`), and `NamespaceCreated` and `Deleting` when it
 creates and deletes the namespace. Events are written through the
 `events.k8s.io` API; the cluster keeps them for an hour by default.
 
-A wrong image or a crashing container is reported after 10 minutes only, by
-`RolloutStuck`: reading the pods to report it at once is #107.
+The **pods** tell what the Deployment reports only after its progress
+deadline: an image that cannot be pulled, an application that keeps crashing
+(`pods.go`). The operator watches them, read-only, and its cache holds only the
+pods labelled `app.kubernetes.io/managed-by=vesper` (`CacheByObject`), not
+every pod of the cluster. Only the pods of the image of the Deployment count:
+the older pods of a rollout are not its problem. While the kubelet waits
+before it pulls again, the message of the last failed pull is kept, so that
+the status does not change at each retry.
 
 ### Resource limits
 
