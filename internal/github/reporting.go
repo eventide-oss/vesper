@@ -104,6 +104,7 @@ func newReport(source *vesperv1alpha1.PreviewSource, pr PullRequest, preview *ve
 	// The commit it runs, which may not be the head of the pull request
 	// while the image of a new commit is built.
 	rep.HeadSHA = preview.Annotations[AnnotationHeadSHA]
+	rep.Notice = decision.Notice
 	rep.URL = preview.Status.URL
 	if preview.Status.ExpiresAt != nil {
 		expires := preview.Status.ExpiresAt.Time
@@ -161,7 +162,12 @@ func reportKey(r Report) string {
 	if r.ExpiresAt != nil {
 		expires = r.ExpiresAt.UTC().Format(time.RFC3339)
 	}
-	return strings.Join([]string{string(r.State), short(r.HeadSHA), r.URL, expires, truncate(r.Reason, 100)}, "|")
+	parts := []string{string(r.State), short(r.HeadSHA), r.URL, expires, truncate(r.Reason, 100)}
+	if r.Notice != "" {
+		// Only then: the previews reported before keep their key.
+		parts = append(parts, truncate(r.Notice, 100))
+	}
+	return strings.Join(parts, "|")
 }
 
 // short returns the first 7 characters of a commit.
