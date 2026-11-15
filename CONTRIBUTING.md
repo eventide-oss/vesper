@@ -12,8 +12,8 @@ comments, commit messages, issues, pull requests and documentation.
 
 - Report a bug or suggest a feature by opening an issue.
 - Pick an issue labelled
-  [`good first issue`](../../labels/good%20first%20issue) or
-  [`help wanted`](../../labels/help%20wanted).
+  [`good first issue`](https://github.com/eventide-oss/vesper/labels/good%20first%20issue) or
+  [`help wanted`](https://github.com/eventide-oss/vesper/labels/help%20wanted).
 - Improve the documentation or add tests.
 - To report a **security vulnerability**, do not open a public issue: follow
   `SECURITY.md`.

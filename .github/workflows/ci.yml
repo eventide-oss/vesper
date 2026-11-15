@@ -101,6 +101,23 @@ jobs:
           persist-credentials: false
       - run: make check-license
 
+  # The links between the pages and the anchors of the docs: a page that moves
+  # or a heading that changes is otherwise found by a reader who clicks it.
+  # External URLs are left out (--offline), because a site being down is not a
+  # reason to block a pull request.
+  links:
+    name: links
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --offline --include-fragments --no-progress './**/*.md'
+          fail: true
+
   lint:
     name: lint
     runs-on: ubuntu-latest
