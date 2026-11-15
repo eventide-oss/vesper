@@ -48,6 +48,9 @@ type Report struct {
 	Reason string
 	// Trigger tells which label stops the preview.
 	Trigger vesperv1alpha1.Trigger
+	// Notice is a line written by the integration, shown under the preview:
+	// for example, a new commit from a fork that waits for approval.
+	Notice string
 }
 
 // DeploymentState returns the state of the GitHub deployment status of r,
@@ -109,6 +112,9 @@ func Comment(r Report) string {
 
 	if r.Reason != "" && (r.State == StateFailed || r.State == StateStopped) {
 		fmt.Fprintf(&b, "\n%s\n", escape(r.Reason))
+	}
+	if r.Notice != "" {
+		fmt.Fprintf(&b, "\n> %s\n", r.Notice)
 	}
 
 	var footer string

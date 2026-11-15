@@ -166,22 +166,32 @@ func (r *Reconciler) apply(ctx context.Context, log logr.Logger,
 	if r.Now != nil {
 		now = r.Now
 	}
-	decision := Decide(source, pr, source.Spec.BuildWorkflow == "", live, now())
-	var poll time.Duration
-	if decision.Action == ActionKeep && source.Spec.BuildWorkflow != "" {
-		build, err := r.API.BuildState(ctx, key.Repository, source.Spec.BuildWorkflow, pr.HeadSHA)
+	approval, build, err := r.approveFork(ctx, source, key.Repository, pr)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+	imageReady := source.Spec.BuildWorkflow == ""
+	if build != nil {
+		imageReady = build.State == BuildSucceeded
+	}
+	decision := Decide(source, pr, approval, imageReady, live, now())
+	if decision.Action == ActionKeep && source.Spec.BuildWorkflow != "" && build == nil {
+		b, err := r.API.BuildState(ctx, key.Repository, source.Spec.BuildWorkflow, pr.HeadSHA)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
-		decision = Decide(source, pr, build == BuildSucceeded, live, now())
-		// A running build is read again soon, rather than on the next event:
-		// the event of its completion may come before the API knows it. A
-		// failed build, or none yet, waits for its next event.
-		if decision.Action == ActionKeep && build == BuildRunning {
-			poll = r.BuildPollInterval
-			if poll == 0 {
-				poll = defaultBuildPollInterval
-			}
+		build = &b
+		decision = Decide(source, pr, approval, build.State == BuildSucceeded, live, now())
+	}
+	// A running build is read again soon, rather than on the next event: the
+	// event of its completion may come before the API knows it. A failed
+	// build, none yet, or a commit that waits for approval waits for its
+	// next event.
+	var poll time.Duration
+	if decision.Action == ActionKeep && build != nil && build.State == BuildRunning && approval.Result != ForkNewCommit {
+		poll = r.BuildPollInterval
+		if poll == 0 {
+			poll = defaultBuildPollInterval
 		}
 	}
 	*prOut, *decisionOut = pr, decision
@@ -253,6 +263,50 @@ func (r *Reconciler) apply(ctx context.Context, log logr.Logger,
 		return reconcile.Result{}, fmt.Errorf("update preview %s: %w", name, err)
 	}
 	return reconcile.Result{}, nil
+}
+
+// approveFork tells whether the head commit of pr, from a fork, may run:
+// the label preview was last added by someone with write access, after the
+// newest run of the build workflow on the commit (#131). The label approves
+// the commits a maintainer could review, not those pushed after it. It
+// reads from the API, not from the events, so that a resync decides the
+// same. It returns the build it read, nil if none: the zero Approval for a
+// pull request that is not a fork, or gets no preview anyway.
+func (r *Reconciler) approveFork(ctx context.Context, source *vesperv1alpha1.PreviewSource, repository string,
+	pr PullRequest) (Approval, *Build, error) {
+	if !pr.Fork || noPreviewReason(source.Spec, pr) != "" {
+		return Approval{}, nil, nil
+	}
+	if source.Spec.BuildWorkflow == "" {
+		return Approval{Result: ForkDenied, Reason: "the PreviewSource has no buildWorkflow, " +
+			"which tells when the commit of a fork was pushed"}, nil, nil
+	}
+	label, err := r.API.LabelAdded(ctx, repository, pr.Number, LabelPreview)
+	if err != nil {
+		return Approval{}, nil, err
+	}
+	if label.Actor == "" {
+		return Approval{Result: ForkDenied, Reason: "nobody is known to have added the label " + LabelPreview}, nil, nil
+	}
+	writer, err := r.API.CanWrite(ctx, repository, label.Actor)
+	if err != nil {
+		return Approval{}, nil, err
+	}
+	if !writer {
+		return Approval{Result: ForkDenied, Reason: fmt.Sprintf("the label %s was added by %s, without write access to the repository",
+			LabelPreview, label.Actor)}, nil, nil
+	}
+	build, err := r.API.BuildState(ctx, repository, source.Spec.BuildWorkflow, pr.HeadSHA)
+	if err != nil {
+		return Approval{}, nil, err
+	}
+	// GitHub dates to the second: a run in the same second as the label is
+	// not approved.
+	if build.State == BuildNone || !build.CreatedAt.Before(label.At) {
+		return Approval{Result: ForkNewCommit, Reason: fmt.Sprintf("commit %.7s from a fork was pushed after the label %s: it waits for approval",
+			pr.HeadSHA, LabelPreview)}, &build, nil
+	}
+	return Approval{Result: ForkApproved}, &build, nil
 }
 
 // changed reports whether current differs from desired in what the

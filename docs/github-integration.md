@@ -314,7 +314,9 @@ kubectl get previewenvironments -n previews-acme
 - **The pull request closes** or merges: the preview is deleted, and the
   comment says *Your preview was stopped*.
 - **Drafts** get a preview once they are ready for review. **Forks** get none
-  by default ([Pull requests from forks](preview-sources.md#pull-requests-from-forks)).
+  by default. With `forkPullRequests: RequireLabel`, a maintainer approves
+  each commit of a fork with the label `preview`
+  ([Pull requests from forks](preview-sources.md#pull-requests-from-forks)).
 
 ## Repositories of another account
 

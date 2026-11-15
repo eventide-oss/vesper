@@ -32,6 +32,10 @@ type fakeAPI struct {
 	err     error
 	checked int // calls to BuildState
 
+	pushed  map[string]time.Time // creation of the build run of a commit
+	labeled map[int]LabelEvent   // latest label preview, by pull request
+	writers map[string]bool      // logins with write access
+
 	deployments   []*fakeDeployment
 	comments      map[int]string // by pull request
 	commentWrites int
@@ -58,19 +62,30 @@ func (f *fakeAPI) OpenPullRequests(context.Context, string) ([]PullRequest, erro
 	return open, f.err
 }
 
-func (f *fakeAPI) BuildState(_ context.Context, _, _, sha string) (BuildState, error) {
+func (f *fakeAPI) BuildState(_ context.Context, _, _, sha string) (Build, error) {
 	f.checked++
+	build := Build{CreatedAt: f.pushed[sha]}
 	switch {
 	case f.err != nil:
-		return "", f.err
+		return Build{}, f.err
 	case f.built[sha]:
-		return BuildSucceeded, nil
+		build.State = BuildSucceeded
 	case f.running[sha]:
-		return BuildRunning, nil
+		build.State = BuildRunning
 	case f.failed[sha]:
-		return BuildFailed, nil
+		build.State = BuildFailed
+	default:
+		return Build{State: BuildNone}, nil
 	}
-	return BuildNone, nil
+	return build, nil
+}
+
+func (f *fakeAPI) LabelAdded(_ context.Context, _ string, number int, _ string) (LabelEvent, error) {
+	return f.labeled[number], f.err
+}
+
+func (f *fakeAPI) CanWrite(_ context.Context, _, login string) (bool, error) {
+	return f.writers[login], f.err
 }
 
 // fakeDeployment is a deployment the fake API recorded.
@@ -146,7 +161,8 @@ func newReconcileFixture(t *testing.T, objs ...client.Object) *reconcileFixture 
 	f := &reconcileFixture{
 		client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(append([]client.Object{source}, objs...)...).Build(),
 		api: &fakeAPI{prs: map[int]PullRequest{}, built: map[string]bool{}, running: map[string]bool{},
-			failed: map[string]bool{}},
+			failed: map[string]bool{}, pushed: map[string]time.Time{}, labeled: map[int]LabelEvent{},
+			writers: map[string]bool{}},
 	}
 	f.r = &Reconciler{Client: f.client, API: f.api, Now: func() time.Time { return decideNow },
 		Enqueue: func(k PullRequestKey) { f.enqueued = append(f.enqueued, k) }}
@@ -286,6 +302,105 @@ func TestReconcileWithoutWorkflow(t *testing.T) {
 	f.reconcile(t, 7)
 	if f.preview(t, 7) == nil || f.api.checked != 0 {
 		t.Errorf("preview %v, %d build checks; want a preview and none", f.preview(t, 7), f.api.checked)
+	}
+}
+
+// updateSource changes the source of the fixture.
+func (f *reconcileFixture) updateSource(t *testing.T, change func(*vesperv1alpha1.PreviewSource)) {
+	t.Helper()
+	source := &vesperv1alpha1.PreviewSource{}
+	if err := f.client.Get(context.Background(), types.NamespacedName{Name: "acme-app"}, source); err != nil {
+		t.Fatal(err)
+	}
+	change(source)
+	if err := f.client.Update(context.Background(), source); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestReconcileFork follows a pull request from a fork with RequireLabel: the
+// label of a maintainer approves the commits pushed before it, not those
+// after it, and the label of someone without write access approves none
+// (#131).
+func TestReconcileFork(t *testing.T) {
+	f := newReconcileFixture(t)
+	f.updateSource(t, func(s *vesperv1alpha1.PreviewSource) { s.Spec.ForkPullRequests = vesperv1alpha1.ForkRequireLabel })
+	f.api.writers["maintainer"] = true
+	labeled := decideNow.Add(-time.Hour)
+
+	// Pushed and built, no label: nothing, even with trigger All.
+	f.api.prs[9] = PullRequest{Number: 9, Open: true, HeadSHA: sha1, Fork: true}
+	f.api.built[sha1], f.api.pushed[sha1] = true, labeled.Add(-time.Hour)
+	f.reconcile(t, 9)
+	if f.preview(t, 9) != nil {
+		t.Fatal("a fork got a preview without the label")
+	}
+
+	// Labeled by someone without write access: nothing.
+	f.api.prs[9] = PullRequest{Number: 9, Open: true, HeadSHA: sha1, Fork: true, Labels: []string{LabelPreview}}
+	f.api.labeled[9] = LabelEvent{Actor: "triager", At: labeled}
+	f.reconcile(t, 9)
+	if f.preview(t, 9) != nil {
+		t.Fatal("a fork got a preview from the label of someone without write access")
+	}
+
+	// Labeled by a maintainer, after the push: the preview runs the commit.
+	f.api.labeled[9] = LabelEvent{Actor: "maintainer", At: labeled}
+	f.reconcile(t, 9)
+	if p := f.preview(t, 9); p == nil || p.Annotations[AnnotationHeadSHA] != sha1 {
+		t.Fatalf("preview = %v, want one of %s", p, sha1[:7])
+	}
+
+	// A commit pushed after the label: the preview stays on the approved
+	// one, and the pull request says how to approve the new one.
+	f.api.prs[9] = PullRequest{Number: 9, Open: true, HeadSHA: sha2, Fork: true, Labels: []string{LabelPreview}}
+	f.api.built[sha2], f.api.pushed[sha2] = true, labeled.Add(time.Minute)
+	f.setPhase(t, 9, vesperv1alpha1.PhaseReady, "")
+	f.reconcile(t, 9)
+	if p := f.preview(t, 9); p == nil || p.Annotations[AnnotationHeadSHA] != sha1 {
+		t.Fatalf("preview = %v, want it still on %s", p, sha1[:7])
+	}
+	if !strings.Contains(f.api.comments[9], NoticeNewForkCommit) {
+		t.Errorf("comment = %q, want the notice of the new commit", f.api.comments[9])
+	}
+
+	// The label added again: the new commit runs, and the notice goes.
+	f.api.labeled[9] = LabelEvent{Actor: "maintainer", At: labeled.Add(time.Hour)}
+	// The fake client sets no creation time: keep the preview young enough
+	// to be updated, not replaced.
+	created := f.preview(t, 9).CreationTimestamp.Time
+	f.r.Now = func() time.Time { return created.Add(time.Hour) }
+	f.reconcile(t, 9)
+	if p := f.preview(t, 9); p == nil || p.Annotations[AnnotationHeadSHA] != sha2 {
+		t.Fatalf("preview = %v, want one of %s", p, sha2[:7])
+	}
+	f.setPhase(t, 9, vesperv1alpha1.PhaseReady, "")
+	f.reconcile(t, 9)
+	if strings.Contains(f.api.comments[9], NoticeNewForkCommit) {
+		t.Errorf("comment = %q, want no notice", f.api.comments[9])
+	}
+
+	// Labeled again by someone without write access: the preview goes.
+	f.api.labeled[9] = LabelEvent{Actor: "triager", At: labeled.Add(2 * time.Hour)}
+	f.reconcile(t, 9)
+	if f.preview(t, 9) != nil {
+		t.Fatal("the preview stayed after a label from someone without write access")
+	}
+}
+
+// TestReconcileForkWithoutWorkflow: without a build workflow, nothing tells
+// when the commit of a fork was pushed, so no fork gets a preview.
+func TestReconcileForkWithoutWorkflow(t *testing.T) {
+	f := newReconcileFixture(t)
+	f.updateSource(t, func(s *vesperv1alpha1.PreviewSource) {
+		s.Spec.ForkPullRequests, s.Spec.BuildWorkflow = vesperv1alpha1.ForkRequireLabel, ""
+	})
+	f.api.writers["maintainer"] = true
+	f.api.labeled[9] = LabelEvent{Actor: "maintainer", At: decideNow}
+	f.api.prs[9] = PullRequest{Number: 9, Open: true, HeadSHA: sha1, Fork: true, Labels: []string{LabelPreview}}
+	f.reconcile(t, 9)
+	if f.preview(t, 9) != nil {
+		t.Error("a fork got a preview without a build workflow")
 	}
 }
 

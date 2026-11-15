@@ -37,6 +37,8 @@ func TestComment(t *testing.T) {
 	}{
 		{"starting", Report{Preview: "p", State: StateStarting, HeadSHA: sha1, Trigger: vesperv1alpha1.TriggerAll},
 			[]string{"Your preview is starting", "✦ Starting", "| — |", "`no-preview`"}, []string{"Visit preview"}},
+		{"a new commit from a fork waits", Report{Preview: "p", State: StateReady, HeadSHA: sha1, Notice: NoticeNewForkCommit},
+			[]string{"\n> A new commit from a fork waits for approval: remove the label `preview` and add it again"}, nil},
 		{"ready without a public URL", Report{Preview: "p", State: StateReady, HeadSHA: sha1},
 			[]string{"no public URL: `kubectl port-forward`"}, []string{"Visit preview"}},
 		{"trigger Label", Report{Preview: "p", State: StateReady, Trigger: vesperv1alpha1.TriggerLabel},

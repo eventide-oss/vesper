@@ -46,6 +46,17 @@ type Run struct {
 	// Status is queued, in_progress or completed; empty means completed.
 	Status     string
 	Conclusion string // success, failure... once completed
+	// CreatedAt is when the run was created, on a push; zero leaves it out.
+	CreatedAt time.Time
+}
+
+// IssueEvent is an event of a pull request of a fake repository, such as
+// labeled.
+type IssueEvent struct {
+	Event string
+	Label string
+	Actor string
+	At    time.Time
 }
 
 // Deployment is a deployment of a fake repository, with its statuses,
@@ -79,6 +90,8 @@ type repo struct {
 	runs         []Run
 	deployments  []*Deployment
 	comments     []*Comment
+	events       map[int][]IssueEvent
+	permissions  map[string]string // by login
 }
 
 // Server is a fake GitHub API, started for a test and closed at its end.
@@ -129,6 +142,8 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.listComments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("PATCH /repos/{owner}/{name}/issues/comments/{id}", s.updateComment)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/events", s.listEvents)
+	mux.HandleFunc("GET /repos/{owner}/{name}/collaborators/{login}/permission", s.permission)
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -139,7 +154,8 @@ func New(t *testing.T) *Server {
 func (s *Server) AddRepo(repository string, installationID int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.repos[strings.ToLower(repository)] = &repo{installation: installationID, pulls: map[int]PullRequest{}}
+	s.repos[strings.ToLower(repository)] = &repo{installation: installationID, pulls: map[int]PullRequest{},
+		events: map[int][]IssueEvent{}, permissions: map[string]string{}}
 }
 
 // SetPullRequest creates or replaces a pull request of repository. An empty
@@ -165,6 +181,23 @@ func (s *Server) AddRun(repository string, run Run) {
 	}
 	r := s.repos[strings.ToLower(repository)]
 	r.runs = append(r.runs, run)
+}
+
+// AddEvent records an event of the pull request number of repository,
+// newer than the others.
+func (s *Server) AddEvent(repository string, number int, event IssueEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	r := s.repos[strings.ToLower(repository)]
+	r.events[number] = append(r.events[number], event)
+}
+
+// SetPermission gives login the permission (admin, write, read or none) on
+// repository. A login without one is not a collaborator: GitHub answers 404.
+func (s *Server) SetPermission(repository, login, permission string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.repos[strings.ToLower(repository)].permissions[strings.ToLower(login)] = permission
 }
 
 // CompleteRuns completes the runs of file on sha with conclusion, as the API
@@ -300,6 +333,17 @@ func (s *Server) listPulls(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 	slices.SortFunc(open, func(a, b PullRequest) int { return b.Number - a.Number })
 
+	start, end := paginate(w, r, len(open))
+	items := make([]any, 0, end-start)
+	for _, pr := range open[start:end] {
+		items = append(items, pullJSON(r, pr))
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+// paginate returns the bounds of the page the request asks for, among n
+// items, and sets the Link header of the next page, as GitHub.
+func paginate(w http.ResponseWriter, r *http.Request, n int) (start, end int) {
 	perPage, _ := strconv.Atoi(r.URL.Query().Get("per_page"))
 	if perPage <= 0 {
 		perPage = 30
@@ -308,20 +352,55 @@ func (s *Server) listPulls(w http.ResponseWriter, r *http.Request) {
 	if page <= 0 {
 		page = 1
 	}
-	start := min((page-1)*perPage, len(open))
-	end := min(start+perPage, len(open))
-	if end < len(open) {
+	start = min((page-1)*perPage, n)
+	end = min(start+perPage, n)
+	if end < n {
 		next := *r.URL
 		q := next.Query()
 		q.Set("page", strconv.Itoa(page+1))
 		next.RawQuery = q.Encode()
 		w.Header().Set("Link", fmt.Sprintf(`<%s%s>; rel="next"`, "http://"+r.Host, next.RequestURI()))
 	}
+	return start, end
+}
+
+func (s *Server) listEvents(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	number, _ := strconv.Atoi(r.PathValue("number"))
+	s.mu.Lock()
+	events := slices.Clone(rp.events[number]) // oldest first, as GitHub
+	s.mu.Unlock()
+	start, end := paginate(w, r, len(events))
 	items := make([]any, 0, end-start)
-	for _, pr := range open[start:end] {
-		items = append(items, pullJSON(r, pr))
+	for _, e := range events[start:end] {
+		item := map[string]any{"event": e.Event, "actor": map[string]any{"login": e.Actor},
+			"created_at": e.At.UTC().Format(time.RFC3339)}
+		if e.Label != "" {
+			item["label"] = map[string]any{"name": e.Label}
+		}
+		items = append(items, item)
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (s *Server) permission(w http.ResponseWriter, r *http.Request) {
+	s.count(r)
+	rp, ok := s.repoAuthenticated(w, r)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	permission, known := rp.permissions[strings.ToLower(r.PathValue("login"))]
+	s.mu.Unlock()
+	if !known {
+		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"permission": permission, "user": map[string]any{"login": r.PathValue("login")}})
 }
 
 func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
@@ -342,6 +421,9 @@ func (s *Server) listRuns(w http.ResponseWriter, r *http.Request) {
 			item := map[string]any{"id": i + 1, "head_sha": run.HeadSHA, "status": run.Status, "conclusion": nil}
 			if run.Status == "completed" {
 				item["conclusion"] = run.Conclusion
+			}
+			if !run.CreatedAt.IsZero() {
+				item["created_at"] = run.CreatedAt.UTC().Format(time.RFC3339)
 			}
 			matching = append(matching, item)
 		}

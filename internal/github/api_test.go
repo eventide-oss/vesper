@@ -123,14 +123,67 @@ func TestBuildState(t *testing.T) {
 		if err != nil {
 			t.Fatalf("BuildState(%s, %s): %v", tt.file, tt.sha[:7], err)
 		}
-		if got != tt.want {
-			t.Errorf("BuildState(%s, %s) = %s, want %s", tt.file, tt.sha[:7], got, tt.want)
+		if got.State != tt.want {
+			t.Errorf("BuildState(%s, %s) = %s, want %s", tt.file, tt.sha[:7], got.State, tt.want)
 		}
 	}
 
 	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha1, Conclusion: "cancelled"})
-	if got, _ := client.BuildState(context.Background(), "acme/app", "preview.yml", sha1); got != BuildFailed {
-		t.Errorf("a cancelled newest run = %s, want %s", got, BuildFailed)
+	if got, _ := client.BuildState(context.Background(), "acme/app", "preview.yml", sha1); got.State != BuildFailed {
+		t.Errorf("a cancelled newest run = %s, want %s", got.State, BuildFailed)
+	}
+}
+
+func TestBuildCreatedAt(t *testing.T) {
+	server, client := newTestClient(t)
+	pushed := time.Date(2026, time.November, 13, 9, 30, 0, 0, time.UTC)
+	server.AddRun("acme/app", githubtest.Run{File: "preview.yml", HeadSHA: sha1, Conclusion: "success", CreatedAt: pushed})
+	got, err := client.BuildState(context.Background(), "acme/app", "preview.yml", sha1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.CreatedAt.Equal(pushed) {
+		t.Errorf("created at %s, want %s", got.CreatedAt, pushed)
+	}
+}
+
+func TestLabelAdded(t *testing.T) {
+	server, client := newTestClient(t)
+	at := time.Date(2026, time.November, 13, 9, 0, 0, 0, time.UTC)
+	server.AddEvent("acme/app", 7, githubtest.IssueEvent{Event: "labeled", Label: LabelPreview, Actor: "alice", At: at})
+	// More than a page of events: the latest addition is on the second.
+	for i := range 120 {
+		server.AddEvent("acme/app", 7, githubtest.IssueEvent{Event: "commented", Actor: "mallory", At: at.Add(time.Duration(i) * time.Second)})
+	}
+	server.AddEvent("acme/app", 7, githubtest.IssueEvent{Event: "unlabeled", Label: LabelPreview, Actor: "alice", At: at.Add(time.Hour)})
+	server.AddEvent("acme/app", 7, githubtest.IssueEvent{Event: "labeled", Label: LabelPreview, Actor: "bob", At: at.Add(2 * time.Hour)})
+	server.AddEvent("acme/app", 7, githubtest.IssueEvent{Event: "labeled", Label: "bug", Actor: "mallory", At: at.Add(3 * time.Hour)})
+
+	got, err := client.LabelAdded(context.Background(), "acme/app", 7, LabelPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Actor != "bob" || !got.At.Equal(at.Add(2*time.Hour)) {
+		t.Errorf("LabelAdded = %+v, want bob at %s", got, at.Add(2*time.Hour))
+	}
+	if got, _ := client.LabelAdded(context.Background(), "acme/app", 8, LabelPreview); got.Actor != "" {
+		t.Errorf("LabelAdded on a pull request never labeled = %+v, want none", got)
+	}
+}
+
+func TestCanWrite(t *testing.T) {
+	server, client := newTestClient(t)
+	server.SetPermission("acme/app", "admin", "admin")
+	server.SetPermission("acme/app", "maintainer", "write") // maintain, as GitHub reports it
+	server.SetPermission("acme/app", "triager", "read")     // triage, as GitHub reports it
+	for login, want := range map[string]bool{"admin": true, "maintainer": true, "triager": false, "stranger": false} {
+		got, err := client.CanWrite(context.Background(), "acme/app", login)
+		if err != nil {
+			t.Fatalf("CanWrite(%s): %v", login, err)
+		}
+		if got != want {
+			t.Errorf("CanWrite(%s) = %t, want %t", login, got, want)
+		}
 	}
 }
 
