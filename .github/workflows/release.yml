@@ -122,6 +122,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The tag that started the run. GoReleaser would otherwise pick one
+          # of the tags of the commit, and a release tagged on its last
+          # release candidate would be built as that candidate (#192).
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
       # Every file listed in checksums.txt: the archives, install.yaml and
       # install-github.yaml.
       # Signed with the OIDC identity of this workflow run:

@@ -52,7 +52,8 @@ Versions follow [Semantic Versioning](https://semver.org/): `vMAJOR.MINOR.PATCH`
 Before `v1.0.0`, a minor version may break the API (`v1alpha1`). A tag with a
 suffix, such as `v0.1.0-rc.1`, makes a pre-release: GitHub does not show it
 as the latest release. Use a release candidate to try the assets before the
-final tag.
+final tag. The final tag can go on the commit of the last release candidate:
+the workflow releases the tag that started it.
 
 ## Cut a release
 
