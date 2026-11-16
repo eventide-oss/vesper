@@ -8,7 +8,7 @@
 # The builder runs on the platform of the build machine (BUILDPLATFORM) and
 # Go cross-compiles for the target (TARGETOS, TARGETARCH): an image for
 # another architecture builds without emulation.
-FROM --platform=$BUILDPLATFORM golang:1.27.4@sha256:08bcb99a38f85a265f9a93d1d3323e2440eec333380f3ea26ee0dec9264bb41c AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4@sha256:5e8afd493a7124a8586e134d9b532731161d4b9becf9dee5a5956b107426f93d AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # The version the manager logs when it starts; set by the release workflow
