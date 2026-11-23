@@ -1,9 +1,9 @@
 # ADR-0008: Describe a preview as a list of components that Vesper runs itself
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-11-23
 - **Deciders:** @damnthonyy
-- **Issue / PR:** #162
+- **Issue / PR:** #162, #218
 
 ## Context
 
