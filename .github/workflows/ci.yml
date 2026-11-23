@@ -126,6 +126,9 @@ jobs:
       # Pinned, so that a new ShellCheck release cannot turn a pull request red
       # on its own. Bump it here and in docs/development.md together.
       SHELLCHECK_VERSION: v0.11.0
+      # sha256sum of shellcheck-v0.11.0.linux.x86_64.tar.xz: the tag pins a
+      # version, not the bytes behind it. Bump it with the version.
+      SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,6 +137,7 @@ jobs:
         run: |
           url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
           curl -fsSL -o shellcheck.tar.xz "$url"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum -c -
           tar -xJf shellcheck.tar.xz
           echo "$PWD/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
       - run: shellcheck --version
