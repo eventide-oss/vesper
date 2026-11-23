@@ -122,6 +122,13 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *PreviewEnvironmentReconciler) ensureObjects(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time,
 ) (statusUpdate, error) {
+	if len(preview.Spec.Components) > 0 {
+		// The API accepts components (ADR-0008) before the controller runs
+		// them: say so rather than create a Deployment without an image.
+		unsupported := condition{metav1.ConditionFalse, vesperv1alpha1.ReasonComponentsNotSupported,
+			"this version of Vesper does not run components yet; give image instead"}
+		return statusUpdate{expiresAt: expiry, phase: vesperv1alpha1.PhaseFailed, ready: unsupported}, nil
+	}
 	name := NamespaceName(preview.Namespace, preview.Name)
 	owned, err := r.ensureNamespace(ctx, preview, name)
 	if err != nil {

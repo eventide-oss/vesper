@@ -20,19 +20,46 @@ const (
 	MaxTTL = 168 * time.Hour
 )
 
-// PreviewEnvironmentSpec is the preview a user asks for: which image to run,
-// how, and for how long.
+// SingleComponentName is the name of the one component of a preview that
+// gives image instead of components (ADR-0008). Its objects keep the names
+// they had before components existed.
+const SingleComponentName = "app"
+
+// MaxComponents is the largest number of components of a preview; keep it
+// equal to the MaxItems marker of spec.components.
+const MaxComponents = 10
+
+// PreviewEnvironmentSpec is the preview a user asks for: which images to run,
+// how, and for how long. It gives either image, for a preview of one
+// application, or components, for several services (ADR-0008).
+// +kubebuilder:validation:XValidation:rule="has(self.image) || has(self.components)",message="give image, for one application, or components"
+// +kubebuilder:validation:XValidation:rule="!has(self.components) || (!has(self.image) && !has(self.env) && (!has(self.port) || self.port == 8080) && (!has(self.replicas) || self.replicas == 1))",message="with components, set image, port, replicas and env in each component, not at the top of spec"
 type PreviewEnvironmentSpec struct {
 	// image is the container image to run, pinned with a tag other than
 	// "latest" or with a digest, for example ghcr.io/acme/app:pr-42 or
 	// ghcr.io/acme/app@sha256:<64 hex characters>. A preview must show exactly
-	// the code it was created for, and a moving tag would not.
-	// +required
+	// the code it was created for, and a moving tag would not. Required unless
+	// components is set.
+	// +optional
 	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=512
 	// +kubebuilder:validation:XValidation:rule="self.matches('^([a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]+)?/)?[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$')",message="image must be a valid image reference in lowercase, such as ghcr.io/acme/app:pr-42"
 	// +kubebuilder:validation:XValidation:rule="self.matches('@sha256:[a-f0-9]{64}$') || (self.matches(':[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') && !self.endsWith(':latest'))",message="image must be pinned with a tag other than latest, or with a digest"
-	Image string `json:"image"`
+	Image string `json:"image,omitempty"`
+
+	// components are the services of the preview, such as a frontend, an API
+	// and a database, each from its own image. Exactly one is exposed: it
+	// gets the URL of the preview. The others are reached inside the preview
+	// by their name, for example http://api:8080. At most 10, with unique
+	// names. Not with image, port, replicas or env, which each component
+	// sets for itself.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MinItems=1
+	// +kubebuilder:validation:MaxItems=10
+	// +kubebuilder:validation:XValidation:rule="self.filter(c, has(c.expose) && c.expose).size() == 1",message="exactly one component must have expose: true"
+	Components []Component `json:"components,omitempty"`
 
 	// port is the port the container listens on. Defaults to 8080.
 	// +optional
@@ -65,6 +92,75 @@ type PreviewEnvironmentSpec struct {
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=64
 	Env []EnvVar `json:"env,omitempty"`
+}
+
+// Component is one service of a preview: one image, run by a Deployment of
+// its own and reached through a Service named after it (ADR-0008).
+type Component struct {
+	// name of the component, a DNS label such as web, api or postgres. The
+	// other components reach it at this name, inside the preview.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern=`^[a-z]([-a-z0-9]*[a-z0-9])?$`
+	Name string `json:"name"`
+
+	// image is the container image of the component, pinned with a tag other
+	// than "latest" or with a digest, as spec.image.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=512
+	// +kubebuilder:validation:XValidation:rule="self.matches('^([a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]+)?/)?[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$')",message="image must be a valid image reference in lowercase, such as ghcr.io/acme/app:pr-42"
+	// +kubebuilder:validation:XValidation:rule="self.matches('@sha256:[a-f0-9]{64}$') || (self.matches(':[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$') && !self.endsWith(':latest'))",message="image must be pinned with a tag other than latest, or with a digest"
+	Image string `json:"image"`
+
+	// port is the port the component listens on. Defaults to 8080.
+	// +optional
+	// +kubebuilder:default=8080
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+
+	// replicas is the number of pods of the component. Defaults to 1, at
+	// most 5.
+	// +optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=5
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// env sets environment variables in the container of the component.
+	// Names are unique. Values are stored in plain text in the object: do not
+	// put secrets here.
+	// +optional
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=64
+	Env []EnvVar `json:"env,omitempty"`
+
+	// expose gives this component the URL of the preview. Exactly one
+	// component of a preview is exposed; the others are only reachable
+	// inside it.
+	// +optional
+	Expose bool `json:"expose,omitempty"`
+}
+
+// ComponentList returns the components of the preview: spec.components, or,
+// for a spec that gives image, one exposed component named app with the
+// image, port, replicas and env of the spec. Code that runs a preview reads
+// this list, so that it handles both forms the same way.
+func (s *PreviewEnvironmentSpec) ComponentList() []Component {
+	if len(s.Components) > 0 {
+		return s.Components
+	}
+	return []Component{{
+		Name:     SingleComponentName,
+		Image:    s.Image,
+		Port:     s.Port,
+		Replicas: s.Replicas,
+		Env:      s.Env,
+		Expose:   true,
+	}}
 }
 
 // EnvVar is an environment variable set in the preview's container.
@@ -142,6 +238,10 @@ const (
 	// for example because an object it needs exists and is not Vesper's. The
 	// message gives the error, and the operator retries (Ready).
 	ReasonReconcileError = "ReconcileError"
+	// ReasonComponentsNotSupported means the preview gives components, which
+	// this version of the operator does not run yet: it creates nothing for
+	// the preview (Ready).
+	ReasonComponentsNotSupported = "ComponentsNotSupported"
 	// ReasonExpired means the ttl of the preview has passed: it is being
 	// deleted (Ready).
 	ReasonExpired = "Expired"
