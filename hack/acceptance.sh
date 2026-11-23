@@ -72,7 +72,7 @@ kubectl rollout status deploy/app -n "$NS" --timeout=3m >/dev/null; kubectl wait
 kubectl get deploy app -n "$NS" -o jsonpath='image now: {.spec.template.spec.containers[0].image}{"\n"}'
 ./vesperctl extend demo --by 2h
 ./vesperctl create short --image nginxinc/nginx-unprivileged:1.27-alpine --port 8080 --ttl 1m >/dev/null
-S=""; for i in $(seq 1 30); do S=$(kubectl get pe short -o jsonpath='{.status.namespace}' 2>/dev/null); [ -n "$S" ] && break; sleep 2; done; echo "short runs in $S"
+S=""; for _ in $(seq 1 30); do S=$(kubectl get pe short -o jsonpath='{.status.namespace}' 2>/dev/null); [ -n "$S" ] && break; sleep 2; done; echo "short runs in $S"
 kubectl wait --for=delete pe/short --timeout=4m && echo "short expired"
 kubectl get ns "$S" 2>&1 | tail -1
 ./vesperctl delete other --yes
