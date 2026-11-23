@@ -24,7 +24,7 @@ export default defineConfig({
 			],
 			sidebar: [
 				'overview',
-				{ label: 'Start', items: ['quickstart', 'try-on-a-server', 'cheatsheet'] },
+				{ label: 'Start', items: ['quickstart', 'try-on-a-server', 'github-integration', 'cheatsheet'] },
 				{ label: 'Reference', items: ['cli', 'crd-reference', 'preview-sources', 'metrics'] },
 				{
 					label: 'Understand',

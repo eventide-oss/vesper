@@ -8,8 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	gh "github.com/google/go-github/v93/github"
 )
@@ -51,9 +53,15 @@ type API interface {
 	PullRequest(ctx context.Context, repository string, number int) (PullRequest, error)
 	// OpenPullRequests returns the open pull requests of repository.
 	OpenPullRequests(ctx context.Context, repository string) ([]PullRequest, error)
-	// WorkflowSucceeded reports whether a run of the workflow file succeeded
-	// on the commit sha of repository.
-	WorkflowSucceeded(ctx context.Context, repository, file, sha string) (bool, error)
+	// BuildState returns the latest run of the workflow file on the commit
+	// sha of repository.
+	BuildState(ctx context.Context, repository, file, sha string) (Build, error)
+	// LabelAdded returns who last added label to the pull request number,
+	// and when; a zero LabelEvent if nobody did.
+	LabelAdded(ctx context.Context, repository string, number int, label string) (LabelEvent, error)
+	// CanWrite reports whether login has write access to repository: the
+	// permission write, maintain or admin.
+	CanWrite(ctx context.Context, repository, login string) (bool, error)
 
 	// LatestDeployment returns the latest deployment of the commit sha to
 	// environment, with its latest status; a zero Deployment if none.
@@ -70,6 +78,37 @@ type API interface {
 	// there, or the comment of the App with marker, or creates one. It
 	// returns the ID of the comment.
 	UpsertComment(ctx context.Context, repository string, number int, commentID int64, marker, body string) (int64, error)
+}
+
+// BuildState is the state of the latest run of a workflow on a commit.
+type BuildState string
+
+const (
+	// BuildNone: no run of the workflow on the commit, yet.
+	BuildNone BuildState = "None"
+	// BuildRunning: queued or in progress; the API may also report a run that
+	// just completed as in progress for a few seconds.
+	BuildRunning BuildState = "Running"
+	// BuildSucceeded: the image of the commit is built.
+	BuildSucceeded BuildState = "Succeeded"
+	// BuildFailed: completed without success.
+	BuildFailed BuildState = "Failed"
+)
+
+// Build is the latest run of a workflow on a commit.
+type Build struct {
+	State BuildState
+	// CreatedAt is when GitHub created the run, on a push of the commit;
+	// zero for BuildNone. GitHub sets it, unlike the dates of a commit, which
+	// its author chooses.
+	CreatedAt time.Time
+}
+
+// LabelEvent is the latest addition of a label to a pull request.
+type LabelEvent struct {
+	// Actor is the login of who added the label; empty if nobody did.
+	Actor string
+	At    time.Time
 }
 
 // Deployment is the latest deployment of a commit to an environment.
@@ -167,18 +206,77 @@ func (c *Client) OpenPullRequests(ctx context.Context, repository string) ([]Pul
 	}
 }
 
-// WorkflowSucceeded implements API.
-func (c *Client) WorkflowSucceeded(ctx context.Context, repository, file, sha string) (bool, error) {
+// BuildState implements API, from the newest run of the workflow on the
+// commit: a re-run counts over an older run.
+func (c *Client) BuildState(ctx context.Context, repository, file, sha string) (Build, error) {
+	client, owner, name, err := c.repoClient(ctx, repository)
+	if err != nil {
+		return Build{}, err
+	}
+	runs, _, err := client.Actions.ListWorkflowRunsByFileName(ctx, owner, name, file,
+		&gh.ListWorkflowRunsOptions{HeadSHA: sha, ListOptions: gh.ListOptions{PerPage: 1}})
+	if err != nil {
+		return Build{}, fmt.Errorf("list the runs of %s on %s at %s: %w", file, repository, sha, err)
+	}
+	if len(runs.WorkflowRuns) == 0 {
+		return Build{State: BuildNone}, nil
+	}
+	run := runs.WorkflowRuns[0]
+	build := Build{CreatedAt: run.GetCreatedAt().Time}
+	switch {
+	case run.GetStatus() != "completed":
+		build.State = BuildRunning
+	case run.GetConclusion() == "success":
+		build.State = BuildSucceeded
+	default:
+		build.State = BuildFailed
+	}
+	return build, nil
+}
+
+// LabelAdded implements API, through every page of the events of the pull
+// request, oldest first.
+func (c *Client) LabelAdded(ctx context.Context, repository string, number int, label string) (LabelEvent, error) {
+	client, owner, name, err := c.repoClient(ctx, repository)
+	if err != nil {
+		return LabelEvent{}, err
+	}
+	opts := &gh.ListOptions{PerPage: 100}
+	var latest LabelEvent
+	for {
+		events, resp, err := client.Issues.ListIssueEvents(ctx, owner, name, number, opts)
+		if err != nil {
+			return LabelEvent{}, fmt.Errorf("list the events of %s#%d: %w", repository, number, err)
+		}
+		for _, e := range events {
+			if e.GetEvent() == "labeled" && e.GetLabel().GetName() == label {
+				latest = LabelEvent{Actor: e.GetActor().GetLogin(), At: e.GetCreatedAt().Time}
+			}
+		}
+		if resp.NextPage == 0 {
+			return latest, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
+// CanWrite implements API. GitHub reports maintain as write, and triage as
+// read: triage may add labels, but cannot approve a fork.
+func (c *Client) CanWrite(ctx context.Context, repository, login string) (bool, error) {
 	client, owner, name, err := c.repoClient(ctx, repository)
 	if err != nil {
 		return false, err
 	}
-	runs, _, err := client.Actions.ListWorkflowRunsByFileName(ctx, owner, name, file,
-		&gh.ListWorkflowRunsOptions{HeadSHA: sha, Status: "success", ListOptions: gh.ListOptions{PerPage: 1}})
-	if err != nil {
-		return false, fmt.Errorf("list the runs of %s on %s at %s: %w", file, repository, sha, err)
+	level, _, err := client.Repositories.GetPermissionLevel(ctx, owner, name, url.PathEscape(login))
+	switch {
+	case IsNotFound(err):
+		// Not a collaborator, or an account that no longer exists.
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("get the permission of %s on %s: %w", login, repository, err)
 	}
-	return runs.GetTotalCount() > 0, nil
+	permission := level.GetPermission()
+	return permission == "admin" || permission == "write", nil
 }
 
 // toPullRequest keeps what Vesper needs of a pull request of the API.

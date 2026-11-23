@@ -59,7 +59,36 @@ type Decision struct {
 	Preview *vesperv1alpha1.PreviewEnvironment
 	// Reason says why, for the logs.
 	Reason string
+	// Notice is a line the pull request shows under its preview, if any.
+	Notice string
 }
+
+// ForkApproval is whether a fork pull request may run its head commit
+// (#131).
+type ForkApproval string
+
+const (
+	// ForkApproved: someone with write access added the label preview after
+	// the head commit was pushed.
+	ForkApproved ForkApproval = "Approved"
+	// ForkNewCommit: the head commit was pushed after the label, so nobody
+	// approved it; the preview stays on the commit it runs.
+	ForkNewCommit ForkApproval = "NewCommit"
+	// ForkDenied: the label was added by someone without write access, or
+	// the source has no build workflow to tell when a commit was pushed.
+	ForkDenied ForkApproval = "Denied"
+)
+
+// Approval is the ForkApproval of a fork pull request, with why; the zero
+// Approval approves nothing.
+type Approval struct {
+	Result ForkApproval
+	Reason string
+}
+
+// NoticeNewForkCommit tells how to approve a new commit of a fork.
+const NoticeNewForkCommit = "A new commit from a fork waits for approval: remove the label `" +
+	LabelPreview + "` and add it again to run it."
 
 // PreviewName returns the name of the preview of pull request number of the
 // source: <source>-pr-<number>. The name of a source has at most 40
@@ -74,14 +103,28 @@ func RenderImage(template string, number int, sha string) string {
 	return strings.NewReplacer("{{number}}", strconv.Itoa(number), "{{sha}}", sha).Replace(template)
 }
 
-// Decide returns what the preview of pr must be, from its source, whether
-// the image of its head commit is built, and its current preview if any
-// (nil otherwise; not one being deleted). It reads nothing and changes
-// nothing: the reconciler acts on the decision.
-func Decide(source *vesperv1alpha1.PreviewSource, pr PullRequest, imageReady bool,
+// Decide returns what the preview of pr must be, from its source, the
+// approval of its head commit if it comes from a fork, whether the image of
+// that commit is built, and its current preview if any (nil otherwise; not
+// one being deleted). It reads nothing and changes nothing: the reconciler
+// acts on the decision.
+func Decide(source *vesperv1alpha1.PreviewSource, pr PullRequest, approval Approval, imageReady bool,
 	current *vesperv1alpha1.PreviewEnvironment, now time.Time) Decision {
 	if reason := noPreviewReason(source.Spec, pr); reason != "" {
 		return Decision{Action: ActionNone, Reason: reason}
+	}
+	if pr.Fork {
+		switch approval.Result {
+		case ForkApproved:
+		case ForkNewCommit:
+			return Decision{Action: ActionKeep, Reason: approval.Reason, Notice: NoticeNewForkCommit}
+		default:
+			reason := approval.Reason
+			if reason == "" {
+				reason = "the commit from a fork is not approved"
+			}
+			return Decision{Action: ActionNone, Reason: reason}
+		}
 	}
 
 	image := RenderImage(source.Spec.Image, pr.Number, pr.HeadSHA)
@@ -122,10 +165,11 @@ func noPreviewReason(spec vesperv1alpha1.PreviewSourceSpec, pr PullRequest) stri
 		return "the pull request is closed"
 	case pr.Draft:
 		return "the pull request is a draft"
-	case pr.Fork:
-		// RequireLabel, with a label from someone with write access, comes
-		// with #131; until then, no fork gets a preview.
+	case pr.Fork && spec.ForkPullRequests != vesperv1alpha1.ForkRequireLabel:
 		return "the pull request comes from a fork"
+	case pr.Fork && !pr.HasLabel(LabelPreview):
+		// Even with trigger All: the label is the approval of a maintainer.
+		return "the pull request comes from a fork and has no label " + LabelPreview
 	case spec.Trigger == vesperv1alpha1.TriggerLabel && !pr.HasLabel(LabelPreview):
 		return "the pull request has no label " + LabelPreview
 	case spec.Trigger != vesperv1alpha1.TriggerLabel && pr.HasLabel(LabelNoPreview):

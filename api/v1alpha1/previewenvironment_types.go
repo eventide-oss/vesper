@@ -122,9 +122,17 @@ const (
 	// preview, for example because its ResourceQuota is full. The message
 	// gives the error (Ready, Available).
 	ReasonPodsRejected = "PodsRejected"
+	// ReasonImagePullFailed means a pod of the preview cannot pull its
+	// image: a tag that does not exist, a private registry, a typo. The
+	// message gives the error of the kubelet (Ready, Available).
+	ReasonImagePullFailed = "ImagePullFailed"
+	// ReasonCrashLooping means the application of the preview exits again
+	// and again, and Kubernetes waits longer before each restart. The
+	// message gives its last exit code (Ready, Available).
+	ReasonCrashLooping = "CrashLooping"
 	// ReasonRolloutStuck means the application made no progress for the
-	// progress deadline of its Deployment, 10 minutes: often an image that
-	// cannot be pulled, or a container that keeps crashing (Ready, Available).
+	// progress deadline of its Deployment, 10 minutes, for a cause the pods
+	// do not tell as ImagePullFailed or CrashLooping (Ready, Available).
 	ReasonRolloutStuck = "RolloutStuck"
 	// ReasonNamespaceConflict means the namespace the preview needs exists and
 	// was not created by Vesper for this preview. Vesper leaves it untouched

@@ -94,7 +94,7 @@ func TestDecide(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Decide(testSource(tt.trigger), tt.pr, tt.imageReady, tt.current, decideNow)
+			got := Decide(testSource(tt.trigger), tt.pr, Approval{}, tt.imageReady, tt.current, decideNow)
 			if got.Action != tt.wantAction {
 				t.Fatalf("action = %s (%s), want %s", got.Action, got.Reason, tt.wantAction)
 			}
@@ -114,10 +114,56 @@ func TestDecide(t *testing.T) {
 	}
 }
 
+// TestDecideFork checks the gate of the pull requests from forks (#131).
+func TestDecideFork(t *testing.T) {
+	fork := PullRequest{Number: 42, Open: true, HeadSHA: sha2, Fork: true, Labels: []string{LabelPreview}}
+	approved := Approval{Result: ForkApproved}
+	tests := []struct {
+		name       string
+		policy     vesperv1alpha1.ForkPolicy
+		trigger    vesperv1alpha1.Trigger
+		pr         PullRequest
+		approval   Approval
+		current    *vesperv1alpha1.PreviewEnvironment
+		wantAction Action
+		wantReason string
+	}{
+		{"Deny, even approved", vesperv1alpha1.ForkDeny, vesperv1alpha1.TriggerLabel, fork, approved, nil, ActionNone, "from a fork"},
+		{"no policy means Deny", "", vesperv1alpha1.TriggerAll, fork, approved, nil, ActionNone, "from a fork"},
+		{"RequireLabel, approved", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerLabel, fork, approved, nil,
+			ActionApply, "new preview"},
+		{"RequireLabel with trigger All still needs the label", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerAll,
+			PullRequest{Number: 42, Open: true, HeadSHA: sha2, Fork: true}, approved, existing(sha1, time.Hour, 24*time.Hour),
+			ActionNone, "no label preview"},
+		{"RequireLabel, label from someone without write access", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerAll, fork,
+			Approval{Result: ForkDenied, Reason: "the label preview was added by mallory"}, existing(sha1, time.Hour, 24*time.Hour),
+			ActionNone, "mallory"},
+		{"RequireLabel, not checked: no preview", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerAll, fork, Approval{}, nil,
+			ActionNone, "not approved"},
+		{"RequireLabel, a commit after the label: the preview stays", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerAll, fork,
+			Approval{Result: ForkNewCommit, Reason: "waits for approval"}, existing(sha1, time.Hour, 24*time.Hour), ActionKeep, "waits"},
+		{"RequireLabel, closed", vesperv1alpha1.ForkRequireLabel, vesperv1alpha1.TriggerAll,
+			PullRequest{Number: 42, HeadSHA: sha2, Fork: true, Labels: []string{LabelPreview}}, approved, nil, ActionNone, "closed"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := testSource(tt.trigger)
+			source.Spec.ForkPullRequests = tt.policy
+			got := Decide(source, tt.pr, tt.approval, true, tt.current, decideNow)
+			if got.Action != tt.wantAction || !strings.Contains(got.Reason, tt.wantReason) {
+				t.Errorf("Decide = %s (%s), want %s (%s)", got.Action, got.Reason, tt.wantAction, tt.wantReason)
+			}
+			if wantNotice := tt.approval.Result == ForkNewCommit; (got.Notice != "") != wantNotice {
+				t.Errorf("notice = %q, want one: %t", got.Notice, wantNotice)
+			}
+		})
+	}
+}
+
 // TestDecidePreview checks the preview a source defines.
 func TestDecidePreview(t *testing.T) {
 	source := testSource(vesperv1alpha1.TriggerAll)
-	got := Decide(source, PullRequest{Number: 42, Open: true, HeadSHA: sha1}, true, nil, decideNow).Preview
+	got := Decide(source, PullRequest{Number: 42, Open: true, HeadSHA: sha1}, Approval{}, true, nil, decideNow).Preview
 
 	if got.Name != "acme-app-pr-42" || got.Namespace != "previews-acme" {
 		t.Errorf("preview %s/%s, want previews-acme/acme-app-pr-42", got.Namespace, got.Name)
@@ -144,7 +190,7 @@ func TestDecidePreview(t *testing.T) {
 
 	// Without a ttl in the source, the default of a preview.
 	source.Spec.Defaults.TTL = nil
-	if got := Decide(source, PullRequest{Number: 1, Open: true, HeadSHA: sha1}, true, nil, decideNow).Preview; got.Spec.TTL.Duration != vesperv1alpha1.DefaultTTL {
+	if got := Decide(source, PullRequest{Number: 1, Open: true, HeadSHA: sha1}, Approval{}, true, nil, decideNow).Preview; got.Spec.TTL.Duration != vesperv1alpha1.DefaultTTL {
 		t.Errorf("ttl = %s, want %s", got.Spec.TTL.Duration, vesperv1alpha1.DefaultTTL)
 	}
 }

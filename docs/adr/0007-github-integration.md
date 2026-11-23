@@ -168,9 +168,22 @@ Two things, kept up to date from the phase of the preview:
 
 A pull request from a fork runs code from anyone. With `forkPullRequests:
 Deny`, the default, it gets no preview. With `RequireLabel`, it gets one only
-once someone with write access to the repository adds `preview`: the sender
-of the `labeled` event is checked through the API, not trusted from the
-payload. The image is the one the CI of the base repository built (#131).
+once someone with write access to the repository adds `preview` (#131):
+
+- Who added the label is read from the API, not from the payload of the
+  `labeled` event: the latest `labeled` event of `preview` in the events of
+  the pull request, then the permission of its actor (`write` or `admin`;
+  GitHub reports maintain as write, triage as read). A resync decides the
+  same, and needs no event.
+- The label approves the commits pushed before it: otherwise the author
+  could push new code once a maintainer approved the old one. The time of a
+  push is the creation of the run of `buildWorkflow` on the commit, set by
+  GitHub; the dates of a commit are set by its author. A later commit waits,
+  while the preview stays on the approved one, until the label is added
+  again. Without `buildWorkflow`, no fork is approved.
+- The image is the one the CI of the base repository built. A fork gets a
+  read-only token in that CI, so building its image safely is designed
+  apart (#189).
 
 ### Threats and answers
 
@@ -178,7 +191,7 @@ payload. The image is the one the CI of the base repository built (#131).
 | --- | --- |
 | A forged webhook creates or deletes previews | HMAC signature checked in constant time before parsing; 401 otherwise; handling is idempotent, so a replayed delivery changes nothing |
 | The public endpoint is flooded | size limit and timeouts; rejected requests are cheap; optional rate limit at the ingress controller; the endpoint has no access beyond previews |
-| A stranger runs code through a fork | forks denied by default; with `RequireLabel`, the label must come from someone with write access |
+| A stranger runs code through a fork | forks denied by default; with `RequireLabel`, the label must come from someone with write access, and approves only the commits pushed before it |
 | Any App installation runs code on the cluster | only repositories with a `PreviewSource` get previews; the rest is logged and ignored |
 | Pull request data is crafted (branch, title) | never used in names, labels, images or commands; names come from the `PreviewSource` and the number |
 | A token leaks | installation tokens last one hour and cover the installed repositories only; the private key and the webhook secret sit in one Secret, mounted in the pod of `vesper-github` only, with no RBAC right to read it; none is logged, nor the payloads |

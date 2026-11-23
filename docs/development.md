@@ -145,7 +145,9 @@ message:
 | `Available` | True `DeploymentAvailable` | every replica runs the requested image |
 | | False `Provisioning` | the pods are starting ("1/2 replicas available") |
 | | False `PodsRejected` | the API server rejects the pods, for example because the [quota](#resource-limits) is full; the message gives its error |
-| | False `RolloutStuck` | no progress for the progress deadline of the Deployment, 10 minutes: often an image that cannot be pulled, or a container that keeps crashing. Look at the pods of the preview namespace |
+| | False `ImagePullFailed` | a pod of the current image cannot pull it; the message gives the error of the kubelet |
+| | False `CrashLooping` | the application of a pod of the current image keeps exiting; the message gives its last exit code |
+| | False `RolloutStuck` | no progress for the progress deadline of the Deployment, 10 minutes, for another cause. Look at the pods of the preview namespace |
 | | False `NamespaceConflict` | the namespace of the preview exists and is not Vesper's |
 | `Expired` | False `TTLNotReached` | the message gives the expiry |
 | | True `TTLPassed` | the ttl has passed: the preview is being deleted |
@@ -163,8 +165,14 @@ when the phase is `Failed`), and `NamespaceCreated` and `Deleting` when it
 creates and deletes the namespace. Events are written through the
 `events.k8s.io` API; the cluster keeps them for an hour by default.
 
-A wrong image or a crashing container is reported after 10 minutes only, by
-`RolloutStuck`: reading the pods to report it at once is #107.
+The **pods** tell what the Deployment reports only after its progress
+deadline: an image that cannot be pulled, an application that keeps crashing
+(`pods.go`). The operator watches them, read-only, and its cache holds only the
+pods labelled `app.kubernetes.io/managed-by=vesper` (`CacheByObject`), not
+every pod of the cluster. Only the pods of the image of the Deployment count:
+the older pods of a rollout are not its problem. While the kubelet waits
+before it pulls again, the message of the last failed pull is kept, so that
+the status does not change at each retry.
 
 ### Resource limits
 
@@ -771,8 +779,10 @@ objects (`internal/github`).
   never trusting the payload for its state, so that late, repeated or lost
   deliveries all end the same way.
 - **The decision** (`decide.go`): no preview for a closed pull request, a
-  draft, a fork, `no-preview` (trigger `All`) or no `preview` (trigger
-  `Label`); otherwise the preview of the source, once the `buildWorkflow`
+  draft, a fork that is not approved, `no-preview` (trigger `All`) or no
+  `preview` (trigger `Label`). A fork is approved (`approveFork` in
+  `reconcile.go`) when someone with write access last added `preview` after
+  the run of `buildWorkflow` on its head commit was created; otherwise the preview of the source, once the `buildWorkflow`
   succeeded on the head commit; a new commit keeps the old image until its
   own is built, then resets the ttl. A `PreviewEnvironment` of the same name
   that the integration did not create is never touched.
@@ -816,36 +826,8 @@ objects (`internal/github`).
 - **Metrics**: `vesper_github_webhook_deliveries_total`, by result, on port
   8443, for authorized clients only.
 
-From a release, `install-github.yaml` holds the same manifests with the image
-of the release, pinned by digest. Set the host of the webhook with a kustomize
-overlay, so that an upgrade keeps it. Save this as
-`vesper-github/kustomization.yaml`, with your host:
-
-```yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-- https://github.com/eventide-oss/vesper/releases/download/v0.2.0-rc.1/install-github.yaml
-patches:
-- target:
-    kind: Ingress
-    name: vesper-github-webhook
-  patch: |-
-    - op: replace
-      path: /spec/rules/0/host
-      value: hooks.preview.example.com
-    - op: replace
-      path: /spec/tls/0/hosts/0
-      value: hooks.preview.example.com
-```
-
-```sh
-kubectl apply -k vesper-github
-kubectl -n vesper-system rollout status deploy/vesper-github
-```
-
-The Secret `vesper-github` must exist first, with the keys `app-id`,
-`private-key` and `webhook-secret` of the GitHub App.
+To install it from a release, with a GitHub App of your own, follow
+[Previews from pull requests](github-integration.md).
 
 Try it on the local cluster, with a secret of your own and a signed `ping`:
 

@@ -117,11 +117,20 @@ func port(preview *vesperv1alpha1.PreviewEnvironment) int32 {
 }
 
 // deploymentAvailable reports whether d runs its latest version on every
-// replica, and how many replicas are available.
+// replica, and how many replicas are available. While a rollout is in
+// progress, the message says so: the old pods stay available, so a bare
+// "N/N replicas available" reads as if nothing were pending (#155).
+// A rollout is in progress when pods of an older version still exist, that
+// is when there are more pods than updated ones. On a first start no pod
+// exists yet, so that case keeps the plain message.
 func deploymentAvailable(d *appsv1.Deployment) (bool, string) {
 	want := ptr.Deref(d.Spec.Replicas, 1)
 	s := d.Status
 	message := fmt.Sprintf("%d/%d replicas available", s.AvailableReplicas, want)
+	if s.Replicas > s.UpdatedReplicas {
+		message = fmt.Sprintf("rolling out: %d/%d replicas updated, %d/%d available",
+			s.UpdatedReplicas, want, s.AvailableReplicas, want)
+	}
 	available := s.ObservedGeneration >= d.Generation &&
 		s.UpdatedReplicas == want && s.Replicas == want && s.AvailableReplicas == want
 	return available, message

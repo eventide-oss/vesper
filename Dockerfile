@@ -8,7 +8,7 @@
 # The builder runs on the platform of the build machine (BUILDPLATFORM) and
 # Go cross-compiles for the target (TARGETOS, TARGETARCH): an image for
 # another architecture builds without emulation.
-FROM --platform=$BUILDPLATFORM golang:1.27.4@sha256:08bcb99a38f85a265f9a93d1d3323e2440eec333380f3ea26ee0dec9264bb41c AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.4@sha256:5e8afd493a7124a8586e134d9b532731161d4b9becf9dee5a5956b107426f93d AS builder
 ARG TARGETOS
 ARG TARGETARCH
 # The version the manager logs when it starts; set by the release workflow
@@ -34,7 +34,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 
 # Distroless: no shell and no package manager, only the binary. The
 # "nonroot" variant runs as user 65532.
-FROM gcr.io/distroless/static:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
+FROM gcr.io/distroless/static:nonroot@sha256:aafe993665bf6200db38a02c11a9351e782a84b6a45e7f33b6695638c88e3931
 WORKDIR /
 COPY --from=builder /workspace/manager /workspace/vesper-github ./
 USER 65532:65532

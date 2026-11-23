@@ -51,13 +51,18 @@ type statusUpdate struct {
 }
 
 // availableCondition reads the Available condition of a preview, and its
-// phase, from its Deployment. The Deployment reports pods the API server
-// rejects (ReplicaFailure) and a rollout past its progress deadline
-// (Progressing False) itself.
-func availableCondition(d *appsv1.Deployment) (condition, vesperv1alpha1.Phase) {
+// phase, from its Deployment and its pods. The pods tell an image that
+// cannot be pulled and an application that keeps crashing at once
+// (podFailure); the Deployment reports pods the API server rejects
+// (ReplicaFailure) and a rollout past its progress deadline (Progressing
+// False). previous is the Available condition the preview shows, if any.
+func availableCondition(d *appsv1.Deployment, pods []corev1.Pod, previous *metav1.Condition) (condition, vesperv1alpha1.Phase) {
 	available, message := deploymentAvailable(d)
 	if available {
 		return condition{metav1.ConditionTrue, vesperv1alpha1.ReasonDeploymentAvailable, message}, vesperv1alpha1.PhaseReady
+	}
+	if failure, ok := podFailure(d, pods, previous); ok {
+		return failure, vesperv1alpha1.PhaseFailed
 	}
 	// Conditions of an older spec say nothing about the current one.
 	if d.Status.ObservedGeneration >= d.Generation {
