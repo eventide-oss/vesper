@@ -137,11 +137,31 @@ sets it apart, and teams that want Helm per pull request are already well
 served by Argo CD and Flux.
 
 It stays possible later, as an **opt-in mode with a warning**, if teams ask
-for it: the chart is read from the default branch, which was reviewed, and
-the pull request only changes the image tags; Vesper accepts a closed list of
-kinds (Deployment, Service, ConfigMap, StatefulSet...) and rejects the rest;
-the namespace keeps the `restricted` profile, the quota and the
-NetworkPolicy; the status and the docs say that the mode trusts the chart.
+for it, with several layers so that no single one has to hold:
+
+- **The source**: the chart is read from the default branch, which was
+  reviewed, or from a versioned chart in an OCI registry, optionally signed;
+  the pull request only changes the image tags.
+- **The rendering**: Vesper renders the chart itself, without access to the
+  cluster, ignores Helm hooks and disables `lookup`, which would let a
+  template read objects of the cluster such as Secrets.
+- **A closed list of kinds**: Vesper accepts Deployment, StatefulSet,
+  Service, ConfigMap, Secret, Job... and rejects the rest: every
+  cluster-scoped object, `Role` and `RoleBinding`, `LoadBalancer` and
+  `NodePort` Services, and Ingresses, since Vesper makes its own. Every
+  object is moved to the namespace of the preview.
+- **Impersonation**: Vesper applies the objects as a ServiceAccount of the
+  preview, bound to a `Role` limited to its namespace, and not with its own
+  rights. If the filter misses an object, the API server still refuses it.
+- **Admission**: the namespace keeps the `restricted` profile, the quota and
+  the NetworkPolicy, and a `ValidatingAdmissionPolicy` (CEL rules checked by
+  the API server) forbids what a preview namespace must never hold, such as a
+  `LoadBalancer` Service, whoever creates it.
+- **People and visibility**: forks still need the `preview` label, a
+  `CODEOWNERS` entry can require a review of the chart, and the status and the
+  comment on the pull request list the objects created and those rejected,
+  and say that the mode trusts the chart.
+
 That needs an ADR of its own.
 
 **A separate `PreviewTemplate` resource**, shared by the previews of a
