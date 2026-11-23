@@ -72,6 +72,105 @@ spec:
           spec:
             description: spec defines the desired state of PreviewEnvironment
             properties:
+              components:
+                description: |-
+                  components are the services of the preview, such as a frontend, an API
+                  and a database, each from its own image. Exactly one is exposed: it
+                  gets the URL of the preview. The others are reached inside the preview
+                  by their name, for example http://api:8080. At most 10, with unique
+                  names. Not with image, port, replicas or env, which each component
+                  sets for itself.
+                items:
+                  description: |-
+                    Component is one service of a preview: one image, run by a Deployment of
+                    its own and reached through a Service named after it (ADR-0008).
+                  properties:
+                    env:
+                      description: |-
+                        env sets environment variables in the container of the component.
+                        Names are unique. Values are stored in plain text in the object: do not
+                        put secrets here.
+                      items:
+                        description: EnvVar is an environment variable set in the
+                          preview's container.
+                        properties:
+                          name:
+                            description: name of the variable, for example LOG_LEVEL.
+                            maxLength: 256
+                            minLength: 1
+                            pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+                            type: string
+                          value:
+                            description: value of the variable. Empty by default.
+                            maxLength: 4096
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      maxItems: 64
+                      type: array
+                      x-kubernetes-list-map-keys:
+                      - name
+                      x-kubernetes-list-type: map
+                    expose:
+                      description: |-
+                        expose gives this component the URL of the preview. Exactly one
+                        component of a preview is exposed; the others are only reachable
+                        inside it.
+                      type: boolean
+                    image:
+                      description: |-
+                        image is the container image of the component, pinned with a tag other
+                        than "latest" or with a digest, as spec.image.
+                      maxLength: 512
+                      minLength: 1
+                      type: string
+                      x-kubernetes-validations:
+                      - message: image must be a valid image reference in lowercase,
+                          such as ghcr.io/acme/app:pr-42
+                        rule: self.matches('^([a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]+)?/)?[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*(/[a-z0-9]+(([._]|__|-+)[a-z0-9]+)*)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$')
+                      - message: image must be pinned with a tag other than latest,
+                          or with a digest
+                        rule: self.matches('@sha256:[a-f0-9]{64}$') || (self.matches(':[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
+                          && !self.endsWith(':latest'))
+                    name:
+                      description: |-
+                        name of the component, a DNS label such as web, api or postgres. The
+                        other components reach it at this name, inside the preview.
+                      maxLength: 63
+                      minLength: 1
+                      pattern: ^[a-z]([-a-z0-9]*[a-z0-9])?$
+                      type: string
+                    port:
+                      default: 8080
+                      description: port is the port the component listens on. Defaults
+                        to 8080.
+                      format: int32
+                      maximum: 65535
+                      minimum: 1
+                      type: integer
+                    replicas:
+                      default: 1
+                      description: |-
+                        replicas is the number of pods of the component. Defaults to 1, at
+                        most 5.
+                      format: int32
+                      maximum: 5
+                      minimum: 1
+                      type: integer
+                  required:
+                  - image
+                  - name
+                  type: object
+                maxItems: 10
+                minItems: 1
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+                x-kubernetes-validations:
+                - message: 'exactly one component must have expose: true'
+                  rule: self.filter(c, has(c.expose) && c.expose).size() == 1
               env:
                 description: |-
                   env sets environment variables in the container. Names are unique.
@@ -103,7 +202,8 @@ spec:
                   image is the container image to run, pinned with a tag other than
                   "latest" or with a digest, for example ghcr.io/acme/app:pr-42 or
                   ghcr.io/acme/app@sha256:<64 hex characters>. A preview must show exactly
-                  the code it was created for, and a moving tag would not.
+                  the code it was created for, and a moving tag would not. Required unless
+                  components is set.
                 maxLength: 512
                 minLength: 1
                 type: string
@@ -144,9 +244,15 @@ spec:
                     168h
                   rule: self.matches('^([0-9]+([.][0-9]+)?(h|m|s))+$') && duration(self)
                     >= duration('1m') && duration(self) <= duration('168h')
-            required:
-            - image
             type: object
+            x-kubernetes-validations:
+            - message: give image, for one application, or components
+              rule: has(self.image) || has(self.components)
+            - message: with components, set image, port, replicas and env in each
+                component, not at the top of spec
+              rule: '!has(self.components) || (!has(self.image) && !has(self.env)
+                && (!has(self.port) || self.port == 8080) && (!has(self.replicas)
+                || self.replicas == 1))'
           status:
             description: status defines the observed state of PreviewEnvironment
             properties:

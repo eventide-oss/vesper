@@ -14,6 +14,28 @@ Package v1alpha1 contains API Schema definitions for the vesper v1alpha1 API gro
 
 
 
+#### Component
+
+
+
+Component is one service of a preview: one image, run by a Deployment of
+its own and reached through a Service named after it (ADR-0008).
+
+
+
+_Appears in:_
+- [PreviewEnvironmentSpec](#previewenvironmentspec)
+
+| Field | Description | Default | Validation |
+| --- | --- | --- | --- |
+| `name` _string_ | name of the component, a DNS label such as web, api or postgres. The<br />other components reach it at this name, inside the preview. |  | MaxLength: 63 <br />MinLength: 1 <br />Pattern: `^[a-z]([-a-z0-9]*[a-z0-9])?$` <br />Required: \{\} <br /> |
+| `image` _string_ | image is the container image of the component, pinned with a tag other<br />than "latest" or with a digest, as spec.image. |  | MaxLength: 512 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `port` _integer_ | port is the port the component listens on. Defaults to 8080. | 8080 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `replicas` _integer_ | replicas is the number of pods of the component. Defaults to 1, at<br />most 5. | 1 | Maximum: 5 <br />Minimum: 1 <br />Optional: \{\} <br /> |
+| `env` _[EnvVar](#envvar) array_ | env sets environment variables in the container of the component.<br />Names are unique. Values are stored in plain text in the object: do not<br />put secrets here. |  | MaxItems: 64 <br />Optional: \{\} <br /> |
+| `expose` _boolean_ | expose gives this component the URL of the preview. Exactly one<br />component of a preview is exposed; the others are only reachable<br />inside it. |  | Optional: \{\} <br /> |
+
+
 #### EnvVar
 
 
@@ -23,6 +45,7 @@ EnvVar is an environment variable set in the preview's container.
 
 
 _Appears in:_
+- [Component](#component)
 - [PreviewDefaults](#previewdefaults)
 - [PreviewEnvironmentSpec](#previewenvironmentspec)
 
@@ -115,8 +138,9 @@ image, for example the build of a pull request, until its TTL expires.
 
 
 
-PreviewEnvironmentSpec is the preview a user asks for: which image to run,
-how, and for how long.
+PreviewEnvironmentSpec is the preview a user asks for: which images to run,
+how, and for how long. It gives either image, for a preview of one
+application, or components, for several services (ADR-0008).
 
 
 
@@ -125,7 +149,8 @@ _Appears in:_
 
 | Field | Description | Default | Validation |
 | --- | --- | --- | --- |
-| `image` _string_ | image is the container image to run, pinned with a tag other than<br />"latest" or with a digest, for example ghcr.io/acme/app:pr-42 or<br />ghcr.io/acme/app@sha256:<64 hex characters>. A preview must show exactly<br />the code it was created for, and a moving tag would not. |  | MaxLength: 512 <br />MinLength: 1 <br />Required: \{\} <br /> |
+| `image` _string_ | image is the container image to run, pinned with a tag other than<br />"latest" or with a digest, for example ghcr.io/acme/app:pr-42 or<br />ghcr.io/acme/app@sha256:<64 hex characters>. A preview must show exactly<br />the code it was created for, and a moving tag would not. Required unless<br />components is set. |  | MaxLength: 512 <br />MinLength: 1 <br />Optional: \{\} <br /> |
+| `components` _[Component](#component) array_ | components are the services of the preview, such as a frontend, an API<br />and a database, each from its own image. Exactly one is exposed: it<br />gets the URL of the preview. The others are reached inside the preview<br />by their name, for example http://api:8080. At most 10, with unique<br />names. Not with image, port, replicas or env, which each component<br />sets for itself. |  | MaxItems: 10 <br />MinItems: 1 <br />Optional: \{\} <br /> |
 | `port` _integer_ | port is the port the container listens on. Defaults to 8080. | 8080 | Maximum: 65535 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `replicas` _integer_ | replicas is the number of pods to run. Defaults to 1, at most 5. | 1 | Maximum: 5 <br />Minimum: 1 <br />Optional: \{\} <br /> |
 | `ttl` _[Duration](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.37/#duration-v1-meta)_ | ttl is how long the preview lives after its creation, as a duration such<br />as "24h" or "90m", between 1m and 168h (7 days). Defaults to 24h. When it<br />has passed, the preview is deleted. Raise it to extend the preview: the<br />total lifetime stays within 168h. | 24h | Type: string <br />Optional: \{\} <br /> |
