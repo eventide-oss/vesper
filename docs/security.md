@@ -53,21 +53,28 @@ open a port on the nodes. The API server refuses more than 5 replicas.
 
 ### A preview is isolated on the network
 
-A NetworkPolicy in each preview namespace ([ADR-0005](adr/0005-network-isolation.md))
-lets in only the application port, from the preview itself and from
-namespaces that are not previews (the ingress controller). It lets out only
+Two NetworkPolicies in each preview namespace ([ADR-0005](adr/0005-network-isolation.md),
+amended by [ADR-0008](adr/0008-multi-service-previews.md)) control who reaches a
+preview. Inside the preview, every pod reaches every port of the others, so
+that its components call each other. From namespaces that are not previews
+(the ingress controller), only the pods of the exposed component are reached,
+on the port of the application; the other components, such as a database,
+are not. Other previews reach nothing. The policies let out only
 the pods of the preview, DNS, and the public internet: not the private,
 link-local and shared address ranges, nor the public addresses of the nodes
 and of the API server, which the operator reads and keeps up to date.
 
 - Code: [`networkpolicy.go`](../internal/controller/networkpolicy.go),
   [`hostaddresses.go`](../internal/controller/hostaddresses.go).
-- Tests: `TestReconcileCreatesNetworkPolicy`, `TestReconcileRestoresChangedNetworkPolicy`,
-  `TestReconcileDeniesHostAddresses`, `TestEnvtestDeniesNewNodeAddress`, and the
-  e2e test `TestPreviewNetworkIsolation`, which probes the isolation from inside
-  a preview on kind: another preview, the API server through its Service and
-  through the address of its endpoint, and the kubelet through the address of
-  the node are blocked; the internet is reached.
+- Tests: `TestReconcileCreatesNetworkPolicy`, `TestReconcileExposesOneComponent`,
+  `TestReconcileRestoresChangedNetworkPolicy`, `TestReconcileDeniesHostAddresses`,
+  `TestEnvtestDeniesNewNodeAddress`, and the e2e tests `TestPreviewNetworkIsolation`,
+  which probes the isolation from inside a preview on kind: another preview,
+  the API server through its Service and through the address of its endpoint,
+  and the kubelet through the address of the node are blocked; the internet is
+  reached; and `TestPreviewNetworkIsolationComponents`: only the exposed
+  component is reached from outside, and components reach each other on any
+  port. Both run with kindnet, Calico and Cilium.
 - Verified with these CNI plugins, in their default configuration:
 
   | CNI | Version | Checked by |
