@@ -37,14 +37,9 @@ func wantNetworkPolicySpec() networkingv1.NetworkPolicySpec {
 	return networkingv1.NetworkPolicySpec{
 		PodSelector: metav1.LabelSelector{},
 		PolicyTypes: []networkingv1.PolicyType{"Ingress", "Egress"},
+		// Any port, from the pods of the preview only.
 		Ingress: []networkingv1.NetworkPolicyIngressRule{{
-			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: ptr.To(intstr.FromString("http"))}},
-			From: []networkingv1.NetworkPolicyPeer{
-				{PodSelector: &metav1.LabelSelector{}},
-				{NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key: "app.kubernetes.io/managed-by", Operator: "NotIn", Values: []string{"vesper"},
-				}}}},
-			},
+			From: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
 		}},
 		Egress: []networkingv1.NetworkPolicyEgressRule{
 			{To: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}}},
@@ -62,6 +57,34 @@ func wantNetworkPolicySpec() networkingv1.NetworkPolicySpec {
 	}
 }
 
+// wantExposeNetworkPolicySpec is the policy of the exposed component, whose
+// pods have the labels podLabels.
+func wantExposeNetworkPolicySpec(podLabels map[string]string) networkingv1.NetworkPolicySpec {
+	tcp := corev1.ProtocolTCP
+	return networkingv1.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{MatchLabels: podLabels},
+		PolicyTypes: []networkingv1.PolicyType{"Ingress"},
+		Ingress: []networkingv1.NetworkPolicyIngressRule{{
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: ptr.To(intstr.FromString("http"))}},
+			From: []networkingv1.NetworkPolicyPeer{
+				{NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key: "app.kubernetes.io/managed-by", Operator: "NotIn", Values: []string{"vesper"},
+				}}}},
+			},
+		}},
+	}
+}
+
+func getExposeNetworkPolicy(t *testing.T, r *PreviewEnvironmentReconciler) *networkingv1.NetworkPolicy {
+	t.Helper()
+	var np networkingv1.NetworkPolicy
+	key := types.NamespacedName{Namespace: NamespaceName("team-a", "pr-42"), Name: ExposeNetworkPolicyName}
+	if err := r.Get(context.Background(), key, &np); err != nil {
+		t.Fatalf("get networkpolicy %s: %v", ExposeNetworkPolicyName, err)
+	}
+	return &np
+}
+
 func TestReconcileCreatesNetworkPolicy(t *testing.T) {
 	r := newReconciler(t, newPreview())
 	reconcileOnce(t, r)
@@ -69,11 +92,47 @@ func TestReconcileCreatesNetworkPolicy(t *testing.T) {
 	if got, want := getNetworkPolicy(t, r).Spec, wantNetworkPolicySpec(); !reflect.DeepEqual(got, want) {
 		t.Errorf("networkpolicy spec = %+v, want %+v", got, want)
 	}
+	// A preview that gives one image exposes its pods, selected as in v0.2.
+	want := wantExposeNetworkPolicySpec(map[string]string{"app.kubernetes.io/name": "preview-app"})
+	np := getExposeNetworkPolicy(t, r)
+	if !reflect.DeepEqual(np.Spec, want) {
+		t.Errorf("expose networkpolicy spec = %+v, want %+v", np.Spec, want)
+	}
+	if !ownedBy(np, newPreview()) {
+		t.Errorf("expose networkpolicy labels = %v, want the preview labels", np.Labels)
+	}
 }
 
-// TestReconcileRestoresChangedNetworkPolicy opens the policy by hand, as a
+// TestReconcileExposesOneComponent: with components, only the pods of the
+// exposed component are let in from outside the preview, and the policy
+// follows when another component is exposed.
+func TestReconcileExposesOneComponent(t *testing.T) {
+	r := newReconciler(t, newStackPreview())
+	reconcileOnce(t, r)
+
+	if got, want := getNetworkPolicy(t, r).Spec, wantNetworkPolicySpec(); !reflect.DeepEqual(got, want) {
+		t.Errorf("networkpolicy spec = %+v, want %+v", got, want)
+	}
+	want := wantExposeNetworkPolicySpec(map[string]string{"vesper.eventide.dev/component": "web"})
+	if got := getExposeNetworkPolicy(t, r).Spec; !reflect.DeepEqual(got, want) {
+		t.Errorf("expose networkpolicy spec = %+v, want %+v", got, want)
+	}
+
+	preview := getPreview(t, r)
+	preview.Spec.Components[0].Expose, preview.Spec.Components[1].Expose = false, true
+	if err := r.Update(context.Background(), preview); err != nil {
+		t.Fatalf("update preview: %v", err)
+	}
+	reconcileOnce(t, r)
+	want = wantExposeNetworkPolicySpec(map[string]string{"vesper.eventide.dev/component": "api"})
+	if got := getExposeNetworkPolicy(t, r).Spec; !reflect.DeepEqual(got, want) {
+		t.Errorf("expose networkpolicy spec after exposing api = %+v, want %+v", got, want)
+	}
+}
+
+// TestReconcileRestoresChangedNetworkPolicy opens the policies by hand, as a
 // user who wants to reach a preview from another one might: the operator
-// closes it again.
+// closes them again.
 func TestReconcileRestoresChangedNetworkPolicy(t *testing.T) {
 	r := newReconciler(t, newPreview())
 	reconcileOnce(t, r)
@@ -84,9 +143,18 @@ func TestReconcileRestoresChangedNetworkPolicy(t *testing.T) {
 	if err := r.Update(context.Background(), np); err != nil {
 		t.Fatalf("update networkpolicy: %v", err)
 	}
+	expose := getExposeNetworkPolicy(t, r)
+	expose.Spec.PodSelector = metav1.LabelSelector{} // every pod reachable from outside
+	if err := r.Update(context.Background(), expose); err != nil {
+		t.Fatalf("update networkpolicy: %v", err)
+	}
 	reconcileOnce(t, r)
 	if got, want := getNetworkPolicy(t, r).Spec, wantNetworkPolicySpec(); !reflect.DeepEqual(got, want) {
 		t.Errorf("networkpolicy spec = %+v, want it restored to %+v", got, want)
+	}
+	want := wantExposeNetworkPolicySpec(map[string]string{"app.kubernetes.io/name": "preview-app"})
+	if got := getExposeNetworkPolicy(t, r).Spec; !reflect.DeepEqual(got, want) {
+		t.Errorf("expose networkpolicy spec = %+v, want it restored to %+v", got, want)
 	}
 }
 

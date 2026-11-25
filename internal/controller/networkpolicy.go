@@ -16,9 +16,16 @@ import (
 	vesperv1alpha1 "github.com/eventide-oss/vesper/api/v1alpha1"
 )
 
-// NetworkPolicyName is the name of the NetworkPolicy of a preview, in the
-// preview namespace.
-const NetworkPolicyName = "preview"
+// The NetworkPolicies of a preview, in the preview namespace. Policies add
+// up: a pod accepts the traffic that any policy selecting it allows.
+const (
+	// NetworkPolicyName selects every pod of the preview: it denies all
+	// traffic except inside the preview, DNS and the public internet.
+	NetworkPolicyName = "preview"
+	// ExposeNetworkPolicyName selects the pods of the exposed component only,
+	// and lets in the namespaces that are not previews (ADR-0008).
+	ExposeNetworkPolicyName = "preview-expose"
+)
 
 // privateNetworks are the destinations a preview may not reach (ADR-0005):
 // the private ranges, where the pods, the Services and the nodes of the
@@ -41,15 +48,23 @@ func (r *PreviewEnvironmentReconciler) ensureNetworkPolicy(
 		// preview reach them: no policy, so no Deployment either.
 		return err
 	}
+	// The exposed component is reachable before the policy of every pod
+	// stops letting in the namespaces that are not previews, as v0.2 did:
+	// an upgraded preview stays reachable from its Ingress.
+	expose := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: ExposeNetworkPolicyName, Namespace: namespace}}
+	if err := r.ensureOwned(ctx, preview, expose, "networkpolicy", func() { mutateExposeNetworkPolicy(expose, preview) }); err != nil {
+		return err
+	}
 	np := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: NetworkPolicyName, Namespace: namespace}}
 	return r.ensureOwned(ctx, preview, np, "networkpolicy", func() { mutateNetworkPolicy(np, preview, hosts) })
 }
 
 // mutateNetworkPolicy denies all traffic to and from the pods of the preview,
 // then allows:
-//   - in: the port of the application, from the pods of the preview and from
-//     every namespace that is not a preview, such as the one of the ingress
-//     controller. Previews cannot reach each other;
+//   - in: any port, from the pods of the preview, so that its components
+//     reach each other (ADR-0008). The namespaces that are not previews are
+//     let in by the policy of the exposed component only. Previews cannot
+//     reach each other;
 //   - out: the pods of the preview, DNS, and the public internet, but not the
 //     private networks, nor the public addresses of the nodes and of the API
 //     server (hosts).
@@ -62,13 +77,7 @@ func mutateNetworkPolicy(np *networkingv1.NetworkPolicy, preview *vesperv1alpha1
 		PodSelector: metav1.LabelSelector{}, // every pod of the namespace
 		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress, networkingv1.PolicyTypeEgress},
 		Ingress: []networkingv1.NetworkPolicyIngressRule{{
-			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: ptr.To(intstr.FromString(portName))}},
-			From: []networkingv1.NetworkPolicyPeer{
-				{PodSelector: &metav1.LabelSelector{}},
-				{NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
-					Key: LabelManagedBy, Operator: metav1.LabelSelectorOpNotIn, Values: []string{ManagedByVesper},
-				}}}},
-			},
+			From: []networkingv1.NetworkPolicyPeer{{PodSelector: &metav1.LabelSelector{}}},
 		}},
 		Egress: []networkingv1.NetworkPolicyEgressRule{
 			// The pods of the preview: their addresses are private.
@@ -80,5 +89,27 @@ func mutateNetworkPolicy(np *networkingv1.NetworkPolicy, preview *vesperv1alpha1
 				{IPBlock: &networkingv1.IPBlock{CIDR: "::/0", Except: slices.Concat(privateNetworks.ipv6, hosts.ipv6)}},
 			}},
 		},
+	}
+}
+
+// mutateExposeNetworkPolicy lets in the namespaces that are not previews,
+// such as the one of the ingress controller, on the port of the application
+// of the exposed component only. The other components are reachable from
+// the preview only (ADR-0008).
+func mutateExposeNetworkPolicy(np *networkingv1.NetworkPolicy, preview *vesperv1alpha1.PreviewEnvironment) {
+	setPreviewLabels(np, preview)
+
+	tcp := corev1.ProtocolTCP
+	np.Spec = networkingv1.NetworkPolicySpec{
+		PodSelector: metav1.LabelSelector{MatchLabels: podSelector(preview, exposedComponent(preview))},
+		PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+		Ingress: []networkingv1.NetworkPolicyIngressRule{{
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: ptr.To(intstr.FromString(portName))}},
+			From: []networkingv1.NetworkPolicyPeer{
+				{NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key: LabelManagedBy, Operator: metav1.LabelSelectorOpNotIn, Values: []string{ManagedByVesper},
+				}}}},
+			},
+		}},
 	}
 }

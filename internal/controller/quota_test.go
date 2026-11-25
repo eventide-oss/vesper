@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -119,21 +120,27 @@ func TestReconcileRestoresChangedQuota(t *testing.T) {
 
 // TestReconcileCreatesLimitsBeforeDeployment records the order of creation:
 // the API server applies a LimitRange and a quota only to pods created after
-// them, and the quota rejects pods without limits. The NetworkPolicy also
-// comes first, so that no pod runs without it.
+// them, and the quota rejects pods without limits. The NetworkPolicies also
+// come first, so that no pod runs without them: the one of the exposed
+// component, then the one of every pod.
 func TestReconcileCreatesLimitsBeforeDeployment(t *testing.T) {
 	r := newReconciler(t, newPreview())
 	var created []string
 	r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
 		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
-			created = append(created, fmt.Sprintf("%T", obj))
+			kind := fmt.Sprintf("%T", obj)
+			if _, ok := obj.(*networkingv1.NetworkPolicy); ok {
+				kind += " " + obj.GetName()
+			}
+			created = append(created, kind)
 			return c.Create(ctx, obj, opts...)
 		},
 	})
 	reconcileOnce(t, r)
 
 	want := []string{
-		"*v1.Namespace", "*v1.LimitRange", "*v1.ResourceQuota", "*v1.NetworkPolicy", "*v1.Deployment", "*v1.Service",
+		"*v1.Namespace", "*v1.LimitRange", "*v1.ResourceQuota", "*v1.NetworkPolicy preview-expose",
+		"*v1.NetworkPolicy preview", "*v1.Deployment", "*v1.Service",
 	}
 	if !reflect.DeepEqual(created, want) {
 		t.Errorf("created %v, want %v", created, want)

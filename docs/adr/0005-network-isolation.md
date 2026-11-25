@@ -1,6 +1,6 @@
 # ADR-0005: Isolate each preview on the network
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by [ADR-0008](0008-multi-service-previews.md)
 - **Date:** 2026-11-06
 - **Deciders:** @damnthonyy
 - **Issue / PR:** #42
@@ -45,6 +45,12 @@ pod in it and denies all traffic in both directions, except:
 
 The operator creates the policy before the Deployment, so no pod of a preview
 runs without it, and restores it when it is changed by hand.
+
+> **Amended by [ADR-0008](0008-multi-service-previews.md)** (#223): a preview
+> may run several components. Inside a preview, every pod now reaches every
+> port of the others. The namespaces that are not previews reach only the pods
+> of the exposed component, on its port `http`, through a second policy,
+> `preview-expose`, which selects those pods. Egress does not change.
 
 ## Alternatives considered
 

@@ -13,7 +13,7 @@ flowchart LR
     subgraph cluster [Cluster]
         api -->|stores, after validating against the CRD schema| pe[(PreviewEnvironment)]
         op[Vesper operator<br/>vesper-system] -->|watches| pe
-        op -->|creates and restores| objs[Preview namespace:<br/>quota, limits, NetworkPolicy,<br/>Deployment, Service, Ingress]
+        op -->|creates and restores| objs[Preview namespace:<br/>quota, limits, NetworkPolicies,<br/>Deployments, Services, Ingress]
         ic[Ingress controller<br/>Traefik, HAProxy...] -->|routes to| objs
     end
     browser([Browser]) -->|https://name-ns-hash.preview.example.com| ic
@@ -57,17 +57,17 @@ flowchart TD
     ns --> conflict{Namespace or object<br/>not created by Vesper?}
     conflict -->|yes| failed[Phase Failed,<br/>reason NamespaceConflict]
     conflict -->|no| limits[ResourceQuota and LimitRange]
-    limits --> np[NetworkPolicy, with the public<br/>addresses of the cluster denied]
-    np --> deploy[Deployment of the image]
-    deploy --> svc[Service]
-    svc --> ing[Ingress, if a preview domain is set]
+    limits --> np[NetworkPolicies: the exposed component,<br/>then every pod, with the public<br/>addresses of the cluster denied]
+    np --> deploy[Deployment and Service<br/>of each component]
+    deploy --> svc[Delete the objects of<br/>removed components]
+    svc --> ing[Ingress to the exposed component,<br/>if a preview domain is set]
     ing --> status[Status: phase, conditions, URL,<br/>expiresAt, events]
     status --> requeue([Come back when the TTL passes])
 ```
 
 - **Order matters for security.** The quota, the LimitRange and the
-  NetworkPolicy exist before the Deployment, so no pod of a preview runs
-  without them; if one of them fails, the Deployment is not created
+  NetworkPolicies exist before the Deployments, so no pod of a preview runs
+  without them; if one of them fails, no Deployment is created
   ([security model](security.md)).
 - **Restore, do not trust.** Every step compares the object with what it
   should be, and writes it back if it was changed by hand. An object that

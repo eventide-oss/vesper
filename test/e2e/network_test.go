@@ -101,6 +101,95 @@ func TestPreviewNetworkIsolation(t *testing.T) {
 	expectReachable(t, c, ns.Name, app, 80, false)
 }
 
+// TestPreviewNetworkIsolationComponents checks the isolation of a preview of
+// components (ADR-0008): only the exposed component is reachable from a
+// namespace that is not a preview; inside the preview, every pod reaches
+// every port of the others, such as a database on 5432; another preview
+// reaches nothing.
+func TestPreviewNetworkIsolationComponents(t *testing.T) {
+	ctx := context.Background()
+	c := newClient(t)
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{GenerateName: "vesper-e2e-"}}
+	if err := c.Create(ctx, ns); err != nil {
+		t.Fatalf("create namespace: %v", err)
+	}
+	const image = "nginxinc/nginx-unprivileged:1.27"
+	preview := &vesperv1alpha1.PreviewEnvironment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns.Name, Name: "pr-net-stack"},
+		Spec: vesperv1alpha1.PreviewEnvironmentSpec{Components: []vesperv1alpha1.Component{
+			{Name: "web", Image: image, Port: 8080, Expose: true},
+			{Name: "api", Image: image, Port: 8080},
+		}},
+	}
+	previewNamespace := controller.NamespaceName(preview.Namespace, preview.Name)
+	t.Cleanup(func() { cleanup(t, c, ns.Name, previewNamespace) })
+	if err := c.Create(ctx, preview); err != nil {
+		t.Fatalf("create preview: %v", err)
+	}
+	waitForReady(t, c, preview)
+
+	web := "web." + previewNamespace + ".svc.cluster.local"
+	api := "api." + previewNamespace + ".svc.cluster.local"
+	expectReachable(t, c, ns.Name, web, 8080, true)
+	expectReachable(t, c, ns.Name, api, 8080, false)
+	expectReachable(t, c, previewNamespace, web, 8080, true)
+	expectReachable(t, c, previewNamespace, api, 8080, true)
+
+	// A port that is not the one of a component, as a database would use.
+	database := listen(t, c, previewNamespace, 5432)
+	expectReachable(t, c, previewNamespace, database, 5432, true)
+	expectReachable(t, c, ns.Name, database, 5432, false)
+
+	// The namespace of the test now looks like another preview: not even
+	// the exposed component lets it in.
+	ns.Labels = map[string]string{controller.LabelManagedBy: controller.ManagedByVesper}
+	if err := c.Update(ctx, ns); err != nil {
+		t.Fatalf("label namespace: %v", err)
+	}
+	expectReachable(t, c, ns.Name, web, 8080, false)
+}
+
+// listen runs a pod in namespace that accepts TCP connections on port, and
+// returns its address once it runs.
+func listen(t *testing.T, c client.Client, namespace string, port int) string {
+	t.Helper()
+	ctx := context.Background()
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Namespace: namespace, GenerateName: "listener-"},
+		Spec: corev1.PodSpec{
+			AutomountServiceAccountToken: ptr.To(false),
+			SecurityContext: &corev1.PodSecurityContext{
+				RunAsNonRoot:   ptr.To(true),
+				RunAsUser:      ptr.To[int64](65534),
+				SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+			},
+			Containers: []corev1.Container{{
+				Name:    "listener",
+				Image:   "busybox:1.36",
+				Command: []string{"sh", "-c", fmt.Sprintf("while true; do nc -l -p %d; done", port)},
+				SecurityContext: &corev1.SecurityContext{
+					AllowPrivilegeEscalation: ptr.To(false),
+					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+				},
+			}},
+		},
+	}
+	if err := c.Create(ctx, pod); err != nil {
+		t.Fatalf("create listener: %v", err)
+	}
+	eventually(t, readyTimeout, func() error {
+		if err := c.Get(ctx, client.ObjectKeyFromObject(pod), pod); err != nil {
+			return err
+		}
+		if pod.Status.Phase != corev1.PodRunning || pod.Status.PodIP == "" {
+			return fmt.Errorf("listener %s/%s is %s", namespace, pod.Name, pod.Status.Phase)
+		}
+		return nil
+	})
+	return pod.Status.PodIP
+}
+
 // apiServerEndpoint returns an address of the API server and its port, as the
 // EndpointSlices of the kubernetes Service list them: the real address, not
 // the virtual one of the Service.
