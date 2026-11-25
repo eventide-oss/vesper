@@ -9,7 +9,6 @@ rules:
   resources:
   - limitranges
   - resourcequotas
-  - services
   verbs:
   - create
   - get
@@ -37,11 +36,23 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - apps
   resources:
   - deployments
   verbs:
   - create
+  - delete
   - get
   - list
   - update
