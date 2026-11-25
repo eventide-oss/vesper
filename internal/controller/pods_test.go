@@ -27,10 +27,10 @@ const (
 // testPod returns a pod of the application with image, waiting for reason.
 func testPod(name, image, reason, message string) corev1.Pod {
 	pod := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns"},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: containerName, Image: image}}},
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "ns", Labels: map[string]string{appLabel: appLabelValue}},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{{Name: DeploymentName, Image: image}}},
 	}
-	status := corev1.ContainerStatus{Name: containerName}
+	status := corev1.ContainerStatus{Name: DeploymentName}
 	if reason != "" {
 		status.State.Waiting = &corev1.ContainerStateWaiting{Reason: reason, Message: message}
 	}
@@ -39,9 +39,10 @@ func testPod(name, image, reason, message string) corev1.Pod {
 }
 
 func testDeployment(image string) *appsv1.Deployment {
-	d := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Generation: 1}}
+	d := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: DeploymentName, Generation: 1}}
 	d.Spec.Replicas = ptr.To[int32](1)
-	d.Spec.Template.Spec.Containers = []corev1.Container{{Name: containerName, Image: image}}
+	d.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{appLabel: appLabelValue}}
+	d.Spec.Template.Spec.Containers = []corev1.Container{{Name: DeploymentName, Image: image}}
 	d.Status.ObservedGeneration = 1
 	return d
 }
@@ -137,6 +138,7 @@ func TestReconcileReportsImagePullFailed(t *testing.T) {
 	nsName := NamespaceName("team-a", "pr-42")
 	pod := testPod("app-1", currentImage, "ErrImagePull", pullMessage)
 	pod.Namespace, pod.Labels = nsName, previewLabels(newPreview())
+	pod.Labels[appLabel] = appLabelValue // the pod template labels
 	if err := r.Create(context.Background(), &pod); err != nil {
 		t.Fatal(err)
 	}

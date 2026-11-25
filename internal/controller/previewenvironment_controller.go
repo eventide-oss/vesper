@@ -63,8 +63,8 @@ type PreviewEnvironmentReconciler struct {
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments,verbs=get;list;watch;patch;delete
 // +kubebuilder:rbac:groups=vesper.eventide.dev,resources=previewenvironments/status,verbs=patch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;delete
 // +kubebuilder:rbac:groups="",resources=limitranges;resourcequotas,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update
@@ -122,13 +122,6 @@ func (r *PreviewEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.R
 func (r *PreviewEnvironmentReconciler) ensureObjects(
 	ctx context.Context, preview *vesperv1alpha1.PreviewEnvironment, expiry time.Time,
 ) (statusUpdate, error) {
-	if len(preview.Spec.Components) > 0 {
-		// The API accepts components (ADR-0008) before the controller runs
-		// them: say so rather than create a Deployment without an image.
-		unsupported := condition{metav1.ConditionFalse, vesperv1alpha1.ReasonComponentsNotSupported,
-			"this version of Vesper does not run components yet; give image instead"}
-		return statusUpdate{expiresAt: expiry, phase: vesperv1alpha1.PhaseFailed, ready: unsupported}, nil
-	}
 	name := NamespaceName(preview.Namespace, preview.Name)
 	owned, err := r.ensureNamespace(ctx, preview, name)
 	if err != nil {
@@ -154,32 +147,32 @@ func (r *PreviewEnvironmentReconciler) ensureObjects(
 	if err := r.ensureNetworkPolicy(ctx, preview, name); err != nil {
 		return partial, err
 	}
-	deployment, err := r.ensureDeployment(ctx, preview, name)
+	deployments, err := r.ensureComponents(ctx, preview, name)
 	if err != nil {
-		return partial, err
-	}
-	if err := r.ensureService(ctx, preview, name); err != nil {
 		return partial, err
 	}
 	url, err := r.ensureIngress(ctx, preview, name)
 	if err != nil {
 		return partial, err
 	}
-	// The Deployment's status changes as its pods start, and the pods' as
+	// The Deployments' status changes as their pods start, and the pods' as
 	// they fail: their watches bring the preview back here, and the status
 	// follows.
 	var pods []corev1.Pod
-	if ok, _ := deploymentAvailable(deployment); !ok {
-		if pods, err = r.listPods(ctx, preview, name); err != nil {
-			return partial, err
+	for _, d := range deployments {
+		if ok, _ := deploymentAvailable(d); !ok {
+			if pods, err = r.listPods(ctx, preview, name); err != nil {
+				return partial, err
+			}
+			break
 		}
 	}
-	available, phase := availableCondition(deployment, pods,
+	available, phase := componentsCondition(deployments, pods,
 		meta.FindStatusCondition(preview.Status.Conditions, vesperv1alpha1.ConditionAvailable))
 	return statusUpdate{
 		namespace:   name,
 		url:         url,
-		internalURL: internalURL(name),
+		internalURL: internalURL(preview, name, exposedComponent(preview)),
 		expiresAt:   expiry,
 		phase:       phase,
 		ready:       available,

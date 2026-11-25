@@ -48,7 +48,7 @@ func (r *PreviewEnvironmentReconciler) listPods(
 	return pods.Items, nil
 }
 
-// podFailure tells whether a pod of the current image of d cannot run: its
+// podFailure tells whether a pod of d, of its current image, cannot run: its
 // image cannot be pulled, or its application exits again and again. The
 // Deployment reports neither before its progress deadline, 10 minutes (#107).
 // Pods of an older image, still running during a rollout, do not count.
@@ -61,13 +61,14 @@ func podFailure(d *appsv1.Deployment, pods []corev1.Pod, previous *metav1.Condit
 	if image == "" {
 		return condition{}, false
 	}
+	selector := labels.SelectorFromSet(d.Spec.Selector.MatchLabels)
 	slices.SortFunc(pods, func(a, b corev1.Pod) int { return strings.Compare(a.Name, b.Name) })
 	for _, pod := range pods {
-		if !pod.DeletionTimestamp.IsZero() || !runsImage(pod, image) {
+		if !pod.DeletionTimestamp.IsZero() || !selector.Matches(labels.Set(pod.Labels)) || !runsImage(d, pod, image) {
 			continue
 		}
 		for _, s := range pod.Status.ContainerStatuses {
-			if s.Name != containerName || s.State.Waiting == nil {
+			if s.Name != d.Name || s.State.Waiting == nil {
 				continue
 			}
 			waiting := s.State.Waiting
@@ -104,19 +105,25 @@ func crashMessage(pod corev1.Pod, s corev1.ContainerStatus, namespace string) st
 }
 
 // templateImage returns the image of the application in the template of d.
+// The container of the application has the name of its Deployment, the name
+// of its component.
 func templateImage(d *appsv1.Deployment) string {
+	if d.Spec.Selector == nil {
+		return ""
+	}
 	for _, c := range d.Spec.Template.Spec.Containers {
-		if c.Name == containerName {
+		if c.Name == d.Name {
 			return c.Image
 		}
 	}
 	return ""
 }
 
-// runsImage reports whether the application container of pod has image.
-func runsImage(pod corev1.Pod, image string) bool {
+// runsImage reports whether the application container of pod, a pod of d,
+// has image.
+func runsImage(d *appsv1.Deployment, pod corev1.Pod, image string) bool {
 	for _, c := range pod.Spec.Containers {
-		if c.Name == containerName {
+		if c.Name == d.Name {
 			return c.Image == image
 		}
 	}

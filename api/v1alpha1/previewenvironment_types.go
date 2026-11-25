@@ -211,8 +211,9 @@ const (
 	// ReasonProvisioning means the operator is setting up the preview, or
 	// its application is starting (Ready, Available).
 	ReasonProvisioning = "Provisioning"
-	// ReasonDeploymentAvailable means every replica of the application runs
-	// the requested image, behind its Service (Ready, Available).
+	// ReasonDeploymentAvailable means every replica of the application, of
+	// each component, runs the requested image, behind its Service (Ready,
+	// Available).
 	ReasonDeploymentAvailable = "DeploymentAvailable"
 	// ReasonPodsRejected means the API server rejects the pods of the
 	// preview, for example because its ResourceQuota is full. The message
@@ -238,10 +239,6 @@ const (
 	// for example because an object it needs exists and is not Vesper's. The
 	// message gives the error, and the operator retries (Ready).
 	ReasonReconcileError = "ReconcileError"
-	// ReasonComponentsNotSupported means the preview gives components, which
-	// this version of the operator does not run yet: it creates nothing for
-	// the preview (Ready).
-	ReasonComponentsNotSupported = "ComponentsNotSupported"
 	// ReasonExpired means the ttl of the preview has passed: it is being
 	// deleted (Ready).
 	ReasonExpired = "Expired"

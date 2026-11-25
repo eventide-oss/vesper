@@ -60,7 +60,7 @@ func (r *PreviewEnvironmentReconciler) ensureIngress(
 }
 
 // mutateIngress sets the fields Vesper owns on ing: one rule from host to the
-// Service of the preview and, with tls, a TLS section for host.
+// Service of the exposed component of the preview and, with tls, a TLS section for host.
 //
 // The TLS section names no Secret: the ingress controller serves host with
 // its default certificate, a wildcard for the preview domain configured
@@ -86,7 +86,7 @@ func mutateIngress(
 				Path:     "/",
 				PathType: ptr.To(networkingv1.PathTypePrefix),
 				Backend: networkingv1.IngressBackend{Service: &networkingv1.IngressServiceBackend{
-					Name: ServiceName,
+					Name: exposedComponent(preview).Name,
 					Port: networkingv1.ServiceBackendPort{Name: portName},
 				}},
 			}},
